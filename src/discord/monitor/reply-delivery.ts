@@ -175,73 +175,94 @@ export async function deliverDiscordReply(params: {
   });
   const persona = resolveBindingPersona(binding);
   let deliveredAny = false;
-  for (const payload of params.replies) {
-    const mediaList = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
-    const rawText = payload.text ?? "";
-    const tableMode = params.tableMode ?? "code";
-    const text = convertMarkdownTables(rawText, tableMode);
-    if (!text && mediaList.length === 0) {
-      continue;
-    }
-    if (mediaList.length === 0) {
-      const mode = params.chunkMode ?? "length";
-      const chunks = chunkDiscordTextWithMode(text, {
-        maxChars: chunkLimit,
-        maxLines: params.maxLinesPerMessage,
-        chunkMode: mode,
-      });
-      if (!chunks.length && text) {
-        chunks.push(text);
+  try {
+    for (const payload of params.replies) {
+      const mediaList = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
+      const rawText = payload.text ?? "";
+      const tableMode = params.tableMode ?? "code";
+      const text = convertMarkdownTables(rawText, tableMode);
+      if (!text && mediaList.length === 0) {
+        continue;
       }
-      for (const chunk of chunks) {
-        if (!chunk.trim()) {
-          continue;
+      if (mediaList.length === 0) {
+        const mode = params.chunkMode ?? "length";
+        const chunks = chunkDiscordTextWithMode(text, {
+          maxChars: chunkLimit,
+          maxLines: params.maxLinesPerMessage,
+          chunkMode: mode,
+        });
+        if (!chunks.length && text) {
+          chunks.push(text);
         }
+        for (const chunk of chunks) {
+          if (!chunk.trim()) {
+            continue;
+          }
+          const replyTo = resolveReplyTo();
+          await sendDiscordChunkWithFallback({
+            target: params.target,
+            text: chunk,
+            token: params.token,
+            rest: params.rest,
+            accountId: params.accountId,
+            replyTo,
+            binding,
+            username: persona.username,
+            avatarUrl: persona.avatarUrl,
+          });
+          deliveredAny = true;
+        }
+        continue;
+      }
+
+      const firstMedia = mediaList[0];
+      if (!firstMedia) {
+        continue;
+      }
+
+      // Voice message path: audioAsVoice flag routes through sendVoiceMessageDiscord.
+      if (payload.audioAsVoice) {
         const replyTo = resolveReplyTo();
-        await sendDiscordChunkWithFallback({
-          target: params.target,
-          text: chunk,
+        await sendVoiceMessageDiscord(params.target, firstMedia, {
           token: params.token,
           rest: params.rest,
           accountId: params.accountId,
           replyTo,
+        });
+        deliveredAny = true;
+        // Voice messages cannot include text; send remaining text separately if present.
+        await sendDiscordChunkWithFallback({
+          target: params.target,
+          text,
+          token: params.token,
+          rest: params.rest,
+          accountId: params.accountId,
+          replyTo: resolveReplyTo(),
           binding,
           username: persona.username,
           avatarUrl: persona.avatarUrl,
         });
-        deliveredAny = true;
+        // Additional media items are sent as regular attachments (voice is single-file only).
+        await sendAdditionalDiscordMedia({
+          target: params.target,
+          token: params.token,
+          rest: params.rest,
+          accountId: params.accountId,
+          mediaUrls: mediaList.slice(1),
+          resolveReplyTo,
+        });
+        continue;
       }
-      continue;
-    }
 
-    const firstMedia = mediaList[0];
-    if (!firstMedia) {
-      continue;
-    }
-
-    // Voice message path: audioAsVoice flag routes through sendVoiceMessageDiscord.
-    if (payload.audioAsVoice) {
       const replyTo = resolveReplyTo();
-      await sendVoiceMessageDiscord(params.target, firstMedia, {
+      await sendMessageDiscord(params.target, text, {
         token: params.token,
         rest: params.rest,
+        mediaUrl: firstMedia,
         accountId: params.accountId,
         replyTo,
       });
       deliveredAny = true;
-      // Voice messages cannot include text; send remaining text separately if present.
-      await sendDiscordChunkWithFallback({
-        target: params.target,
-        text,
-        token: params.token,
-        rest: params.rest,
-        accountId: params.accountId,
-        replyTo: resolveReplyTo(),
-        binding,
-        username: persona.username,
-        avatarUrl: persona.avatarUrl,
-      });
-      // Additional media items are sent as regular attachments (voice is single-file only).
       await sendAdditionalDiscordMedia({
         target: params.target,
         token: params.token,
@@ -250,29 +271,10 @@ export async function deliverDiscordReply(params: {
         mediaUrls: mediaList.slice(1),
         resolveReplyTo,
       });
-      continue;
     }
-
-    const replyTo = resolveReplyTo();
-    await sendMessageDiscord(params.target, text, {
-      token: params.token,
-      rest: params.rest,
-      mediaUrl: firstMedia,
-      accountId: params.accountId,
-      replyTo,
-    });
-    deliveredAny = true;
-    await sendAdditionalDiscordMedia({
-      target: params.target,
-      token: params.token,
-      rest: params.rest,
-      accountId: params.accountId,
-      mediaUrls: mediaList.slice(1),
-      resolveReplyTo,
-    });
-  }
-
-  if (binding && deliveredAny) {
-    params.threadBindings?.touchThread?.({ threadId: binding.threadId });
+  } finally {
+    if (binding && deliveredAny) {
+      params.threadBindings?.touchThread?.({ threadId: binding.threadId });
+    }
   }
 }

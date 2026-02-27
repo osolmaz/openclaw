@@ -235,6 +235,43 @@ describe("deliverDiscordReply", () => {
     }
   });
 
+  it("touches bound-thread activity when later chunks fail after partial delivery", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-02-20T00:00:00.000Z"));
+      const threadBindings = await createBoundThreadBindings({
+        webhookId: "",
+        webhookToken: "",
+      });
+      vi.setSystemTime(new Date("2026-02-20T00:03:00.000Z"));
+
+      sendMessageDiscordMock
+        .mockResolvedValueOnce({
+          messageId: "msg-1",
+          channelId: "thread-1",
+        })
+        .mockRejectedValueOnce(new Error("send failed"));
+
+      await expect(
+        deliverDiscordReply({
+          replies: [{ text: "First chunk" }, { text: "Second chunk" }],
+          target: "channel:thread-1",
+          token: "token",
+          runtime,
+          textLimit: 2000,
+          sessionKey: "agent:main:subagent:child",
+          threadBindings,
+        }),
+      ).rejects.toThrow("send failed");
+
+      expect(threadBindings.getByThreadId("thread-1")?.lastActivityAt).toBe(
+        new Date("2026-02-20T00:03:00.000Z").getTime(),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("falls back to bot send when webhook delivery fails", async () => {
     const threadBindings = await createBoundThreadBindings();
     sendWebhookMessageDiscordMock.mockRejectedValueOnce(new Error("rate limited"));

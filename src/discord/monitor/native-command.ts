@@ -405,6 +405,9 @@ async function resolveDiscordModelPickerRoute(params: {
   const threadBinding = isThreadChannel
     ? params.threadBindings.getByThreadId(rawChannelId)
     : undefined;
+  if (threadBinding?.threadId && typeof params.threadBindings.touchThread === "function") {
+    params.threadBindings.touchThread({ threadId: threadBinding.threadId });
+  }
   const boundSessionKey = threadBinding?.targetSessionKey?.trim();
   const boundAgentId = boundSessionKey ? resolveAgentIdFromSessionKey(boundSessionKey) : undefined;
   return boundSessionKey
@@ -1436,6 +1439,13 @@ async function dispatchDiscordCommandInteraction(params: {
   if (isGroupDm && discordConfig?.dm?.groupEnabled === false) {
     await respond("Discord group DMs are disabled.");
     return;
+  }
+
+  const boundThreadId = isThreadChannel
+    ? threadBindings.getByThreadId(rawChannelId)?.threadId?.trim()
+    : undefined;
+  if (boundThreadId && typeof threadBindings.touchThread === "function") {
+    threadBindings.touchThread({ threadId: boundThreadId });
   }
 
   const menu = resolveCommandArgMenu({

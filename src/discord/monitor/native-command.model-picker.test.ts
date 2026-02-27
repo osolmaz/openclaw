@@ -394,6 +394,51 @@ describe("Discord model picker interactions", () => {
     expectDispatchedModelSelection({ dispatchSpy, model: "openai/gpt-4o" });
   });
 
+  it("touches bound-thread activity when native picker interactions run in thread", async () => {
+    const touchThread = vi.fn();
+    const context = createModelPickerContext();
+    context.threadBindings = {
+      ...createBoundThreadBindingManager({
+        accountId: "default",
+        threadId: "thread-bound",
+        targetSessionKey: "agent:worker:subagent:bound",
+        agentId: "worker",
+      }),
+      touchThread,
+    };
+
+    const pickerData = createDefaultModelPickerData();
+    const modelCommand = createModelCommandDefinition();
+
+    vi.spyOn(modelPickerModule, "loadDiscordModelPickerData").mockResolvedValue(pickerData);
+    mockModelCommandPipeline(modelCommand);
+    vi.spyOn(dispatcherModule, "dispatchReplyWithDispatcher").mockResolvedValue({} as never);
+
+    const select = createDiscordModelPickerFallbackSelect(context);
+    const selectInteraction = createInteraction({ userId: "owner", values: ["gpt-4o"] });
+    selectInteraction.channel = {
+      type: ChannelType.PublicThread,
+      id: "thread-bound",
+    };
+    await select.run(
+      selectInteraction as unknown as PickerSelectInteraction,
+      createModelsViewSelectData(),
+    );
+
+    const submit = createDiscordModelPickerFallbackButton(context);
+    const submitInteraction = createInteraction({ userId: "owner" });
+    submitInteraction.channel = {
+      type: ChannelType.PublicThread,
+      id: "thread-bound",
+    };
+    await submit.run(
+      submitInteraction as unknown as PickerButtonInteraction,
+      createModelsViewSubmitData(),
+    );
+
+    expect(touchThread).toHaveBeenCalledWith({ threadId: "thread-bound" });
+  });
+
   it("verifies model state against the bound thread session", async () => {
     const context = createModelPickerContext();
     context.threadBindings = createBoundThreadBindingManager({
