@@ -134,7 +134,6 @@ export function createSessionsSpawnTool(opts?: {
             cwd,
             mode: mode && ACP_SPAWN_MODES.includes(mode) ? mode : undefined,
             thread,
-            sandbox,
           },
           {
             agentSessionKey: opts?.agentSessionKey,
@@ -142,7 +141,6 @@ export function createSessionsSpawnTool(opts?: {
             agentAccountId: opts?.agentAccountId,
             agentTo: opts?.agentTo,
             agentThreadId: opts?.agentThreadId,
-            sandboxed: opts?.sandboxed,
           },
         );
         return jsonResult(result);
