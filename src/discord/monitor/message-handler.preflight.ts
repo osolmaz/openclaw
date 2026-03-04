@@ -1,4 +1,8 @@
 import { ChannelType, MessageType, type User } from "@buape/carbon";
+import {
+  ensureConfiguredAcpBindingSession,
+  resolveConfiguredAcpBindingRecord,
+} from "../../acp/persistent-bindings.js";
 import { hasControlCommand } from "../../auto-reply/command-detection.js";
 import { shouldHandleTextCommands } from "../../auto-reply/commands-registry.js";
 import {
@@ -328,8 +332,9 @@ export async function preflightDiscordMessage(
   const memberRoleIds = Array.isArray(params.data.rawMember?.roles)
     ? params.data.rawMember.roles.map((roleId: string) => String(roleId))
     : [];
+  const freshCfg = loadConfig();
   const route = resolveAgentRoute({
-    cfg: loadConfig(),
+    cfg: freshCfg,
     channel: "discord",
     accountId: params.accountId,
     guildId: params.data.guild_id ?? undefined,
@@ -342,13 +347,34 @@ export async function preflightDiscordMessage(
     parentPeer: earlyThreadParentId ? { kind: "channel", id: earlyThreadParentId } : undefined,
   });
   let threadBinding: SessionBindingRecord | undefined;
-  if (earlyThreadChannel) {
-    threadBinding =
-      getSessionBindingService().resolveByConversation({
-        channel: "discord",
-        accountId: params.accountId,
-        conversationId: messageChannelId,
-      }) ?? undefined;
+  threadBinding =
+    getSessionBindingService().resolveByConversation({
+      channel: "discord",
+      accountId: params.accountId,
+      conversationId: messageChannelId,
+      parentConversationId: earlyThreadParentId,
+    }) ?? undefined;
+  if (!threadBinding) {
+    const configured = resolveConfiguredAcpBindingRecord({
+      cfg: freshCfg,
+      channel: "discord",
+      accountId: params.accountId,
+      conversationId: messageChannelId,
+      parentConversationId: earlyThreadParentId,
+    });
+    if (configured) {
+      const ensured = await ensureConfiguredAcpBindingSession({
+        cfg: freshCfg,
+        spec: configured.spec,
+      });
+      if (ensured.ok) {
+        threadBinding = configured.record;
+      } else {
+        logVerbose(
+          `discord: configured ACP binding unavailable for channel ${configured.spec.conversationId}: ${ensured.error}`,
+        );
+      }
+    }
   }
   if (
     shouldIgnoreBoundThreadWebhookMessage({

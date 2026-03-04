@@ -1,4 +1,8 @@
 import type { Bot } from "grammy";
+import {
+  ensureConfiguredAcpBindingSession,
+  resolveConfiguredAcpBindingRecord,
+} from "../acp/persistent-bindings.js";
 import { resolveAckReaction } from "../agents/identity.js";
 import {
   findModelInCatalog,
@@ -47,6 +51,7 @@ import {
 import {
   DEFAULT_ACCOUNT_ID,
   buildAgentMainSessionKey,
+  resolveAgentIdFromSessionKey,
   resolveThreadSessionKeys,
 } from "../routing/session-key.js";
 import { resolvePinnedMainDmOwnerFromAllowlist } from "../security/dm-policy-shared.js";
@@ -244,6 +249,35 @@ export const buildTelegramMessageContext = async ({
     logVerbose(
       `telegram: per-topic agent override: topic=${resolvedThreadId ?? dmThreadId} agent=${topicAgentId} sessionKey=${overrideSessionKey}`,
     );
+  }
+  const configuredBinding = resolveConfiguredAcpBindingRecord({
+    cfg: freshCfg,
+    channel: "telegram",
+    accountId: account.accountId,
+    conversationId: peerId,
+    parentConversationId: isGroup ? String(chatId) : undefined,
+  });
+  if (configuredBinding) {
+    const ensured = await ensureConfiguredAcpBindingSession({
+      cfg: freshCfg,
+      spec: configuredBinding.spec,
+    });
+    if (ensured.ok) {
+      const boundSessionKey = configuredBinding.record.targetSessionKey.trim();
+      const boundAgentId = resolveAgentIdFromSessionKey(boundSessionKey);
+      route = {
+        ...route,
+        sessionKey: boundSessionKey,
+        agentId: boundAgentId || route.agentId,
+      };
+      logVerbose(
+        `telegram: using configured ACP binding for ${configuredBinding.spec.conversationId} -> ${boundSessionKey}`,
+      );
+    } else {
+      logVerbose(
+        `telegram: configured ACP binding unavailable for ${configuredBinding.spec.conversationId}: ${ensured.error}`,
+      );
+    }
   }
   // Fail closed for named Telegram accounts when route resolution falls back to
   // default-agent routing. This prevents cross-account DM/session contamination.

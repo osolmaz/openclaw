@@ -1,4 +1,5 @@
 import type { DiscordPluralKitConfig } from "../discord/pluralkit.js";
+import type { ConversationBindingsConfig } from "./types.acp.js";
 import type {
   BlockStreamingChunkConfig,
   BlockStreamingCoalesceConfig,
@@ -52,6 +53,8 @@ export type DiscordGuildChannelConfig = {
   systemPrompt?: string;
   /** If false, omit thread starter context for this channel (default: true). */
   includeThreadStarter?: boolean;
+  /** Conversation-scoped bindings (for example persistent ACP routing). */
+  bindings?: ConversationBindingsConfig;
 };
 
 export type DiscordReactionNotificationMode = "off" | "own" | "all" | "allowlist";

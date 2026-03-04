@@ -59,6 +59,24 @@ const TelegramCapabilitiesSchema = z.union([
     .strict(),
 ]);
 
+const AcpConversationBindingSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    agentId: z.string().optional(),
+    mode: z.enum(["persistent", "oneshot"]).optional(),
+    label: z.string().optional(),
+    cwd: z.string().optional(),
+    backend: z.string().optional(),
+  })
+  .strict();
+
+const ConversationBindingsSchema = z
+  .object({
+    acp: AcpConversationBindingSchema.optional(),
+  })
+  .strict()
+  .optional();
+
 export const TelegramTopicSchema = z
   .object({
     requireMention: z.boolean().optional(),
@@ -69,6 +87,7 @@ export const TelegramTopicSchema = z
     allowFrom: z.array(z.union([z.string(), z.number()])).optional(),
     systemPrompt: z.string().optional(),
     agentId: z.string().optional(),
+    bindings: ConversationBindingsSchema,
   })
   .strict();
 
@@ -356,6 +375,7 @@ export const DiscordGuildChannelSchema = z
     systemPrompt: z.string().optional(),
     includeThreadStarter: z.boolean().optional(),
     autoThread: z.boolean().optional(),
+    bindings: ConversationBindingsSchema,
   })
   .strict();
 

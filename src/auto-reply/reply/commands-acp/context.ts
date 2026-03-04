@@ -33,10 +33,47 @@ export function resolveAcpCommandThreadId(params: HandleCommandsParams): string 
 }
 
 export function resolveAcpCommandConversationId(params: HandleCommandsParams): string | undefined {
+  const channel = resolveAcpCommandChannel(params);
+  if (channel === "telegram") {
+    const threadId = resolveAcpCommandThreadId(params);
+    const parentConversationId = resolveAcpCommandParentConversationId(params);
+    if (threadId && parentConversationId) {
+      return `${parentConversationId}:topic:${threadId}`;
+    }
+    if (threadId) {
+      return threadId;
+    }
+  }
   return resolveConversationIdFromTargets({
     threadId: params.ctx.MessageThreadId,
     targets: [params.ctx.OriginatingTo, params.command.to, params.ctx.To],
   });
+}
+
+function parseTelegramChatIdFromTarget(raw: unknown): string | undefined {
+  const text = normalizeString(raw);
+  if (!text) {
+    return undefined;
+  }
+  const match = text.match(/^telegram:(-?\d+)$/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return match[1];
+}
+
+export function resolveAcpCommandParentConversationId(
+  params: HandleCommandsParams,
+): string | undefined {
+  const channel = resolveAcpCommandChannel(params);
+  if (channel === "telegram") {
+    return (
+      parseTelegramChatIdFromTarget(params.ctx.OriginatingTo) ??
+      parseTelegramChatIdFromTarget(params.command.to) ??
+      parseTelegramChatIdFromTarget(params.ctx.To)
+    );
+  }
+  return undefined;
 }
 
 export function isAcpCommandDiscordChannel(params: HandleCommandsParams): boolean {
@@ -48,11 +85,14 @@ export function resolveAcpCommandBindingContext(params: HandleCommandsParams): {
   accountId: string;
   threadId?: string;
   conversationId?: string;
+  parentConversationId?: string;
 } {
+  const parentConversationId = resolveAcpCommandParentConversationId(params);
   return {
     channel: resolveAcpCommandChannel(params),
     accountId: resolveAcpCommandAccountId(params),
     threadId: resolveAcpCommandThreadId(params),
     conversationId: resolveAcpCommandConversationId(params),
+    ...(parentConversationId ? { parentConversationId } : {}),
   };
 }

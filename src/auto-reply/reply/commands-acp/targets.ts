@@ -1,3 +1,4 @@
+import { resolveConfiguredAcpBindingRecord } from "../../../acp/persistent-bindings.js";
 import { callGateway } from "../../../gateway/call.js";
 import { getSessionBindingService } from "../../../infra/outbound/session-binding-service.js";
 import { resolveRequesterSessionKey } from "../commands-subagents/shared.js";
@@ -39,11 +40,20 @@ export function resolveBoundAcpThreadSessionKey(params: HandleCommandsParams): s
   if (!bindingContext.channel || !bindingContext.conversationId) {
     return undefined;
   }
-  const binding = getSessionBindingService().resolveByConversation({
+  const serviceBinding = getSessionBindingService().resolveByConversation({
     channel: bindingContext.channel,
     accountId: bindingContext.accountId,
     conversationId: bindingContext.conversationId,
+    parentConversationId: bindingContext.parentConversationId,
   });
+  const configuredBinding = resolveConfiguredAcpBindingRecord({
+    cfg: params.cfg,
+    channel: bindingContext.channel,
+    accountId: bindingContext.accountId,
+    conversationId: bindingContext.conversationId,
+    parentConversationId: bindingContext.parentConversationId,
+  });
+  const binding = serviceBinding ?? configuredBinding?.record ?? null;
   if (!binding || binding.targetKind !== "session") {
     return undefined;
   }

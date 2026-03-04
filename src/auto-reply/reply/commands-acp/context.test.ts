@@ -48,4 +48,23 @@ describe("commands-acp context", () => {
     expect(resolveAcpCommandConversationId(params)).toBe("123456789");
     expect(isAcpCommandDiscordChannel(params)).toBe(false);
   });
+
+  it("builds canonical telegram topic conversation ids from originating chat + thread", () => {
+    const params = buildCommandTestParams("/acp status", baseCfg, {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingChannel: "telegram",
+      OriginatingTo: "telegram:-1001234567890",
+      MessageThreadId: "42",
+    });
+
+    expect(resolveAcpCommandBindingContext(params)).toEqual({
+      channel: "telegram",
+      accountId: "default",
+      threadId: "42",
+      conversationId: "-1001234567890:topic:42",
+      parentConversationId: "-1001234567890",
+    });
+    expect(resolveAcpCommandConversationId(params)).toBe("-1001234567890:topic:42");
+  });
 });

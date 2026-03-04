@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
+import { resetAcpSessionInPlace } from "../../acp/persistent-bindings.js";
 import { logVerbose } from "../../globals.js";
 import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { shouldHandleTextCommands } from "../commands-registry.js";
 import { handleAcpCommand } from "./commands-acp.js";
+import { resolveBoundAcpThreadSessionKey } from "./commands-acp/targets.js";
 import { handleAllowlistCommand } from "./commands-allowlist.js";
 import { handleApproveCommand } from "./commands-approve.js";
 import { handleBashCommand } from "./commands-bash.js";
@@ -172,6 +174,19 @@ export async function handleCommands(params: HandleCommandsParams): Promise<Comm
   // Trigger internal hook for reset/new commands
   if (resetRequested && params.command.isAuthorizedSender) {
     const commandAction: ResetCommandAction = resetMatch?.[1] === "reset" ? "reset" : "new";
+    const boundAcpSessionKey = resolveBoundAcpThreadSessionKey(params);
+    if (boundAcpSessionKey) {
+      const resetResult = await resetAcpSessionInPlace({
+        cfg: params.cfg,
+        sessionKey: boundAcpSessionKey,
+        reason: commandAction,
+      });
+      if (!resetResult.ok && !resetResult.skipped) {
+        logVerbose(
+          `acp reset-in-place failed for ${boundAcpSessionKey}: ${resetResult.error ?? "unknown error"}`,
+        );
+      }
+    }
     await emitResetCommandHooks({
       action: commandAction,
       ctx: params.ctx,

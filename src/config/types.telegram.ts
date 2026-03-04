@@ -1,3 +1,4 @@
+import type { ConversationBindingsConfig } from "./types.acp.js";
 import type {
   BlockStreamingChunkConfig,
   BlockStreamingCoalesceConfig,
@@ -189,6 +190,8 @@ export type TelegramTopicConfig = {
   disableAudioPreflight?: boolean;
   /** Route this topic to a specific agent (overrides group-level and binding routing). */
   agentId?: string;
+  /** Conversation-scoped bindings (for example persistent ACP routing). */
+  bindings?: ConversationBindingsConfig;
 };
 
 export type TelegramGroupConfig = {
