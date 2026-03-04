@@ -34,6 +34,7 @@ const hoisted = vi.hoisted(() => {
   const closeSessionMock = vi.fn();
   const initializeSessionMock = vi.fn();
   const startAcpSpawnParentStreamRelayMock = vi.fn();
+  const resolveAcpSpawnStreamLogPathMock = vi.fn();
   const state = {
     cfg: createDefaultSpawnConfig(),
   };
@@ -47,6 +48,7 @@ const hoisted = vi.hoisted(() => {
     closeSessionMock,
     initializeSessionMock,
     startAcpSpawnParentStreamRelayMock,
+    resolveAcpSpawnStreamLogPathMock,
     state,
   };
 });
@@ -105,6 +107,8 @@ vi.mock("../infra/outbound/session-binding-service.js", async (importOriginal) =
 vi.mock("./acp-spawn-parent-stream.js", () => ({
   startAcpSpawnParentStreamRelay: (...args: unknown[]) =>
     hoisted.startAcpSpawnParentStreamRelayMock(...args),
+  resolveAcpSpawnStreamLogPath: (...args: unknown[]) =>
+    hoisted.resolveAcpSpawnStreamLogPathMock(...args),
 }));
 
 const { spawnAcpDirect } = await import("./acp-spawn.js");
@@ -244,6 +248,9 @@ describe("spawnAcpDirect", () => {
     hoisted.sessionBindingListBySessionMock.mockReset().mockReturnValue([]);
     hoisted.sessionBindingUnbindMock.mockReset().mockResolvedValue([]);
     hoisted.startAcpSpawnParentStreamRelayMock.mockReset();
+    hoisted.resolveAcpSpawnStreamLogPathMock
+      .mockReset()
+      .mockReturnValue("/tmp/sess-main.acp-stream.jsonl");
   });
 
   it("spawns ACP session, binds a new thread, and dispatches initial task", async () => {
@@ -448,6 +455,7 @@ describe("spawnAcpDirect", () => {
     );
 
     expect(result.status).toBe("accepted");
+    expect(result.streamLogPath).toBe("/tmp/sess-main.acp-stream.jsonl");
     const agentCall = hoisted.callGatewayMock.mock.calls
       .map((call: unknown[]) => call[0] as { method?: string; params?: Record<string, unknown> })
       .find((request) => request.method === "agent");
@@ -457,8 +465,12 @@ describe("spawnAcpDirect", () => {
         runId: "run-1",
         parentSessionKey: "agent:main:main",
         agentId: "codex",
+        logPath: "/tmp/sess-main.acp-stream.jsonl",
       }),
     );
+    expect(hoisted.resolveAcpSpawnStreamLogPathMock).toHaveBeenCalledWith({
+      childSessionKey: expect.stringMatching(/^agent:codex:acp:/),
+    });
   });
 
   it('rejects streamTo="parent" without requester session context', async () => {
