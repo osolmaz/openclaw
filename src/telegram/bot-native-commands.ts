@@ -1,4 +1,8 @@
 import type { Bot, Context } from "grammy";
+import {
+  ensureConfiguredAcpBindingSession,
+  resolveConfiguredAcpBindingRecord,
+} from "../acp/persistent-bindings.js";
 import { resolveChunkMode } from "../auto-reply/chunk.js";
 import type { CommandArgs } from "../auto-reply/commands-registry.js";
 import {
@@ -39,7 +43,7 @@ import {
   matchPluginCommand,
 } from "../plugins/commands.js";
 import { resolveAgentRoute } from "../routing/resolve-route.js";
-import { resolveThreadSessionKeys } from "../routing/session-key.js";
+import { resolveAgentIdFromSessionKey, resolveThreadSessionKeys } from "../routing/session-key.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { isSenderAllowed, normalizeDmAllowFromWithStore } from "./bot-access.js";
@@ -409,7 +413,7 @@ export const registerTelegramNativeCommands = ({
     botIdentity: opts.token,
   });
 
-  const resolveCommandRuntimeContext = (params: {
+  const resolveCommandRuntimeContext = async (params: {
     msg: NonNullable<TelegramNativeCommandContext["message"]>;
     isGroup: boolean;
     isForum: boolean;
@@ -424,16 +428,46 @@ export const registerTelegramNativeCommands = ({
       messageThreadId,
     });
     const parentPeer = buildTelegramParentPeer({ isGroup, resolvedThreadId, chatId });
-    const route = resolveAgentRoute({
+    const peerId = isGroup ? buildTelegramGroupPeerId(chatId, resolvedThreadId) : String(chatId);
+    let route = resolveAgentRoute({
       cfg,
       channel: "telegram",
       accountId,
       peer: {
         kind: isGroup ? "group" : "direct",
-        id: isGroup ? buildTelegramGroupPeerId(chatId, resolvedThreadId) : String(chatId),
+        id: peerId,
       },
       parentPeer,
     });
+    const configuredBinding = resolveConfiguredAcpBindingRecord({
+      cfg,
+      channel: "telegram",
+      accountId,
+      conversationId: peerId,
+      parentConversationId: isGroup ? String(chatId) : undefined,
+    });
+    if (configuredBinding) {
+      const ensured = await ensureConfiguredAcpBindingSession({
+        cfg,
+        spec: configuredBinding.spec,
+      });
+      if (!ensured.ok) {
+        logVerbose(
+          `telegram native command: configured ACP binding unavailable for topic ${configuredBinding.spec.conversationId}: ${ensured.error}`,
+        );
+        return null;
+      }
+      const configuredSessionKey = configuredBinding.record.targetSessionKey?.trim() ?? "";
+      if (configuredSessionKey) {
+        const boundAgentId = resolveAgentIdFromSessionKey(configuredSessionKey);
+        route = {
+          ...route,
+          sessionKey: configuredSessionKey,
+          agentId: boundAgentId || route.agentId,
+          matchedBy: "binding.channel",
+        };
+      }
+    }
     const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
     const tableMode = resolveMarkdownTableMode({
       cfg,
@@ -442,6 +476,24 @@ export const registerTelegramNativeCommands = ({
     });
     const chunkMode = resolveChunkMode(cfg, "telegram", route.accountId);
     return { chatId, threadSpec, route, mediaLocalRoots, tableMode, chunkMode };
+  };
+  const sendBindingUnavailableReply = async (params: {
+    chatId: number;
+    threadSpec: ReturnType<typeof resolveTelegramThreadSpec>;
+  }) => {
+    const threadParams = buildTelegramThreadParams(params.threadSpec) ?? {};
+    await withTelegramApiErrorLogging({
+      operation: "sendMessage",
+      runtime,
+      fn: () =>
+        bot.api.sendMessage(
+          params.chatId,
+          "Configured ACP binding is unavailable right now. Please try again.",
+          {
+            ...threadParams,
+          },
+        ),
+    });
   };
   const buildCommandDeliveryBaseOptions = (params: {
     chatId: string | number;
@@ -506,13 +558,24 @@ export const registerTelegramNativeCommands = ({
             topicConfig,
             commandAuthorized,
           } = auth;
-          const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } =
-            resolveCommandRuntimeContext({
-              msg,
-              isGroup,
-              isForum,
-              resolvedThreadId,
+          const runtimeContext = await resolveCommandRuntimeContext({
+            msg,
+            isGroup,
+            isForum,
+            resolvedThreadId,
+          });
+          if (!runtimeContext) {
+            await sendBindingUnavailableReply({
+              chatId,
+              threadSpec: resolveTelegramThreadSpec({
+                isGroup,
+                isForum,
+                messageThreadId: (msg as { message_thread_id?: number }).message_thread_id,
+              }),
             });
+            return;
+          }
+          const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } = runtimeContext;
           const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
             chatId,
             accountId: route.accountId,
@@ -729,13 +792,24 @@ export const registerTelegramNativeCommands = ({
             return;
           }
           const { senderId, commandAuthorized, isGroup, isForum, resolvedThreadId } = auth;
-          const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } =
-            resolveCommandRuntimeContext({
-              msg,
-              isGroup,
-              isForum,
-              resolvedThreadId,
+          const runtimeContext = await resolveCommandRuntimeContext({
+            msg,
+            isGroup,
+            isForum,
+            resolvedThreadId,
+          });
+          if (!runtimeContext) {
+            await sendBindingUnavailableReply({
+              chatId,
+              threadSpec: resolveTelegramThreadSpec({
+                isGroup,
+                isForum,
+                messageThreadId: (msg as { message_thread_id?: number }).message_thread_id,
+              }),
             });
+            return;
+          }
+          const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } = runtimeContext;
           const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
             chatId,
             accountId: route.accountId,

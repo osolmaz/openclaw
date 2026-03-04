@@ -7,10 +7,26 @@ import * as pluginCommandsModule from "../../plugins/commands.js";
 import { createDiscordNativeCommand } from "./native-command.js";
 import { createNoopThreadBindingManager } from "./thread-bindings.js";
 
+const persistentBindingMocks = vi.hoisted(() => ({
+  resolveConfiguredAcpBindingRecord: vi.fn(() => null),
+  ensureConfiguredAcpBindingSession: vi.fn(async () => ({ ok: true })),
+}));
+
+vi.mock("../../acp/persistent-bindings.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../acp/persistent-bindings.js")>();
+  return {
+    ...actual,
+    resolveConfiguredAcpBindingRecord: (...args: unknown[]) =>
+      persistentBindingMocks.resolveConfiguredAcpBindingRecord(...args),
+    ensureConfiguredAcpBindingSession: (...args: unknown[]) =>
+      persistentBindingMocks.ensureConfiguredAcpBindingSession(...args),
+  };
+});
+
 type MockCommandInteraction = {
   user: { id: string; username: string; globalName: string };
   channel: { type: ChannelType; id: string };
-  guild: null;
+  guild: { id: string; name?: string } | null;
   rawData: { id: string; member: { roles: string[] } };
   options: {
     getString: ReturnType<typeof vi.fn>;
@@ -22,7 +38,13 @@ type MockCommandInteraction = {
   client: object;
 };
 
-function createInteraction(): MockCommandInteraction {
+function createInteraction(params?: {
+  channelType?: ChannelType;
+  channelId?: string;
+  guildId?: string;
+  guildName?: string;
+}): MockCommandInteraction {
+  const guild = params?.guildId ? { id: params.guildId, name: params.guildName } : null;
   return {
     user: {
       id: "owner",
@@ -30,10 +52,10 @@ function createInteraction(): MockCommandInteraction {
       globalName: "Tester",
     },
     channel: {
-      type: ChannelType.DM,
-      id: "dm-1",
+      type: params?.channelType ?? ChannelType.DM,
+      id: params?.channelId ?? "dm-1",
     },
-    guild: null,
+    guild,
     rawData: {
       id: "interaction-1",
       member: { roles: [] },
@@ -62,6 +84,10 @@ function createConfig(): OpenClawConfig {
 describe("Discord native plugin command dispatch", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    persistentBindingMocks.resolveConfiguredAcpBindingRecord.mockReset();
+    persistentBindingMocks.resolveConfiguredAcpBindingRecord.mockReturnValue(null);
+    persistentBindingMocks.ensureConfiguredAcpBindingSession.mockReset();
+    persistentBindingMocks.ensureConfiguredAcpBindingSession.mockResolvedValue({ ok: true });
   });
 
   it("executes matched plugin commands directly without invoking the agent dispatcher", async () => {
@@ -109,5 +135,95 @@ describe("Discord native plugin command dispatch", () => {
     expect(interaction.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: "direct plugin output" }),
     );
+  });
+
+  it("routes native slash commands through configured ACP Discord channel bindings", async () => {
+    const guildId = "1459246755253325866";
+    const channelId = "1478836151241412759";
+    const boundSessionKey = "agent:codex:acp:binding:discord:default:feedface";
+    const cfg = {
+      commands: {
+        useAccessGroups: false,
+      },
+      channels: {
+        discord: {
+          guilds: {
+            [guildId]: {
+              channels: {
+                [channelId]: {
+                  enabled: true,
+                  bindings: {
+                    acp: {
+                      enabled: true,
+                      agentId: "codex",
+                      mode: "persistent",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const commandSpec: NativeCommandSpec = {
+      name: "status",
+      description: "Status",
+      acceptsArgs: false,
+    };
+    const command = createDiscordNativeCommand({
+      command: commandSpec,
+      cfg,
+      discordConfig: cfg.channels?.discord ?? {},
+      accountId: "default",
+      sessionPrefix: "discord:slash",
+      ephemeralDefault: true,
+      threadBindings: createNoopThreadBindingManager("default"),
+    });
+    const interaction = createInteraction({
+      channelType: ChannelType.GuildText,
+      channelId,
+      guildId,
+      guildName: "Ops",
+    });
+
+    persistentBindingMocks.resolveConfiguredAcpBindingRecord.mockReturnValue({
+      spec: {
+        channel: "discord",
+        accountId: "default",
+        conversationId: channelId,
+        agentId: "codex",
+        mode: "persistent",
+      },
+      record: {
+        targetSessionKey: boundSessionKey,
+      },
+    });
+    persistentBindingMocks.ensureConfiguredAcpBindingSession.mockResolvedValue({
+      ok: true,
+      sessionKey: boundSessionKey,
+    });
+
+    vi.spyOn(pluginCommandsModule, "matchPluginCommand").mockReturnValue(null);
+    const dispatchSpy = vi
+      .spyOn(dispatcherModule, "dispatchReplyWithDispatcher")
+      .mockResolvedValue({
+        counts: {
+          final: 1,
+          block: 0,
+          tool: 0,
+        },
+      } as never);
+
+    await (command as { run: (interaction: unknown) => Promise<void> }).run(interaction as unknown);
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    const dispatchCall = dispatchSpy.mock.calls[0]?.[0] as {
+      ctx?: { SessionKey?: string; CommandTargetSessionKey?: string };
+    };
+    expect(dispatchCall.ctx?.SessionKey).toBe(boundSessionKey);
+    expect(dispatchCall.ctx?.CommandTargetSessionKey).toBe(boundSessionKey);
+    expect(persistentBindingMocks.resolveConfiguredAcpBindingRecord).toHaveBeenCalledTimes(1);
+    expect(persistentBindingMocks.ensureConfiguredAcpBindingSession).toHaveBeenCalledTimes(1);
   });
 });

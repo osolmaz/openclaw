@@ -14,6 +14,10 @@ import {
   type StringSelectMenuInteraction,
 } from "@buape/carbon";
 import { ApplicationCommandOptionType, ButtonStyle } from "discord-api-types/v10";
+import {
+  ensureConfiguredAcpBindingSession,
+  resolveConfiguredAcpBindingRecord,
+} from "../../acp/persistent-bindings.js";
 import { resolveHumanDelayConfig } from "../../agents/identity.js";
 import { resolveChunkMode, resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import type {
@@ -1542,13 +1546,38 @@ async function dispatchDiscordCommandInteraction(params: {
     parentPeer: threadParentId ? { kind: "channel", id: threadParentId } : undefined,
   });
   const threadBinding = isThreadChannel ? threadBindings.getByThreadId(rawChannelId) : undefined;
-  const boundSessionKey = threadBinding?.targetSessionKey?.trim();
+  const configuredBinding =
+    threadBinding == null && !isDirectMessage
+      ? resolveConfiguredAcpBindingRecord({
+          cfg,
+          channel: "discord",
+          accountId,
+          conversationId: channelId,
+          parentConversationId: threadParentId,
+        })
+      : null;
+  if (configuredBinding) {
+    const ensured = await ensureConfiguredAcpBindingSession({
+      cfg,
+      spec: configuredBinding.spec,
+    });
+    if (!ensured.ok) {
+      logVerbose(
+        `discord native command: configured ACP binding unavailable for channel ${configuredBinding.spec.conversationId}: ${ensured.error}`,
+      );
+      await respond("Configured ACP binding is unavailable right now. Please try again.");
+      return;
+    }
+  }
+  const configuredBoundSessionKey = configuredBinding?.record.targetSessionKey?.trim() ?? "";
+  const boundSessionKey = threadBinding?.targetSessionKey?.trim() || configuredBoundSessionKey;
   const boundAgentId = boundSessionKey ? resolveAgentIdFromSessionKey(boundSessionKey) : undefined;
   const effectiveRoute = boundSessionKey
     ? {
         ...route,
         sessionKey: boundSessionKey,
         agentId: boundAgentId ?? route.agentId,
+        ...(configuredBinding ? { matchedBy: "binding.channel" as const } : {}),
       }
     : route;
   const conversationLabel = isDirectMessage ? (user.globalName ?? user.username) : channelId;
