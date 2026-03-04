@@ -33,6 +33,7 @@ import {
 import { normalizeAgentId } from "../routing/session-key.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.js";
 import {
+  type AcpSpawnParentRelayHandle,
   resolveAcpSpawnStreamLogPath,
   startAcpSpawnParentStreamRelay,
 } from "./acp-spawn-parent-stream.js";
@@ -435,15 +436,16 @@ export async function spawnAcpDirect(
           childSessionKey: sessionKey,
         })
       : undefined;
-  let disposeParentRelay: (() => void) | undefined;
+  let parentRelay: AcpSpawnParentRelayHandle | undefined;
   if (streamToParentRequested && parentSessionKey) {
     // Register relay before dispatch so fast lifecycle failures are not missed.
-    disposeParentRelay = startAcpSpawnParentStreamRelay({
+    parentRelay = startAcpSpawnParentStreamRelay({
       runId: childIdem,
       parentSessionKey,
       childSessionKey: sessionKey,
       agentId: targetAgentId,
       logPath: streamLogPath,
+      emitStartNotice: false,
     });
   }
   try {
@@ -466,7 +468,7 @@ export async function spawnAcpDirect(
       childRunId = response.runId.trim();
     }
   } catch (err) {
-    disposeParentRelay?.();
+    parentRelay?.dispose();
     await cleanupFailedAcpSpawn({
       cfg,
       sessionKey,
@@ -481,17 +483,19 @@ export async function spawnAcpDirect(
   }
 
   if (streamToParentRequested && parentSessionKey) {
-    if (disposeParentRelay && childRunId !== childIdem) {
-      disposeParentRelay();
+    if (parentRelay && childRunId !== childIdem) {
+      parentRelay.dispose();
       // Defensive fallback if gateway returns a runId that differs from idempotency key.
-      startAcpSpawnParentStreamRelay({
+      parentRelay = startAcpSpawnParentStreamRelay({
         runId: childRunId,
         parentSessionKey,
         childSessionKey: sessionKey,
         agentId: targetAgentId,
         logPath: streamLogPath,
+        emitStartNotice: false,
       });
     }
+    parentRelay?.notifyStarted();
     return {
       status: "accepted",
       childSessionKey: sessionKey,

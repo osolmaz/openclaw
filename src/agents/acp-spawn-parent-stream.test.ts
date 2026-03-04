@@ -49,7 +49,7 @@ describe("startAcpSpawnParentStreamRelay", () => {
   });
 
   it("relays assistant progress and completion to the parent session", () => {
-    const stop = startAcpSpawnParentStreamRelay({
+    const relay = startAcpSpawnParentStreamRelay({
       runId: "run-1",
       parentSessionKey: "agent:main:main",
       childSessionKey: "agent:codex:acp:child-1",
@@ -87,11 +87,11 @@ describe("startAcpSpawnParentStreamRelay", () => {
         sessionKey: "agent:main:main",
       }),
     );
-    stop();
+    relay.dispose();
   });
 
   it("emits a no-output notice and a resumed notice when output returns", () => {
-    const stop = startAcpSpawnParentStreamRelay({
+    const relay = startAcpSpawnParentStreamRelay({
       runId: "run-2",
       parentSessionKey: "agent:main:main",
       childSessionKey: "agent:codex:acp:child-2",
@@ -128,11 +128,11 @@ describe("startAcpSpawnParentStreamRelay", () => {
       },
     });
     expect(collectedTexts().some((text) => text.includes("run failed: boom"))).toBe(true);
-    stop();
+    relay.dispose();
   });
 
   it("auto-disposes stale relays after max lifetime timeout", () => {
-    const stop = startAcpSpawnParentStreamRelay({
+    const relay = startAcpSpawnParentStreamRelay({
       runId: "run-3",
       parentSessionKey: "agent:main:main",
       childSessionKey: "agent:codex:acp:child-3",
@@ -158,7 +158,24 @@ describe("startAcpSpawnParentStreamRelay", () => {
     vi.advanceTimersByTime(5);
 
     expect(enqueueSystemEventMock.mock.calls).toHaveLength(before);
-    stop();
+    relay.dispose();
+  });
+
+  it("supports delayed start notices", () => {
+    const relay = startAcpSpawnParentStreamRelay({
+      runId: "run-4",
+      parentSessionKey: "agent:main:main",
+      childSessionKey: "agent:codex:acp:child-4",
+      agentId: "codex",
+      emitStartNotice: false,
+    });
+
+    expect(collectedTexts().some((text) => text.includes("Started codex session"))).toBe(false);
+
+    relay.notifyStarted();
+
+    expect(collectedTexts().some((text) => text.includes("Started codex session"))).toBe(true);
+    relay.dispose();
   });
 
   it("resolves ACP spawn stream log path from session metadata", () => {

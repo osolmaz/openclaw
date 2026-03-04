@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { readAcpSessionEntry } from "../acp/runtime/session-meta.js";
 import { resolveSessionFilePath, resolveSessionFilePathOptions } from "../config/sessions/paths.js";
@@ -83,11 +83,15 @@ export function startAcpSpawnParentStreamRelay(params: {
   noOutputNoticeMs?: number;
   noOutputPollMs?: number;
   maxRelayLifetimeMs?: number;
-}): () => void {
+  emitStartNotice?: boolean;
+}): AcpSpawnParentRelayHandle {
   const runId = params.runId.trim();
   const parentSessionKey = params.parentSessionKey.trim();
   if (!runId || !parentSessionKey) {
-    return () => {};
+    return {
+      dispose: () => {},
+      notifyStarted: () => {},
+    };
   }
 
   const streamFlushMs =
@@ -110,19 +114,54 @@ export function startAcpSpawnParentStreamRelay(params: {
   const relayLabel = truncate(compactWhitespace(params.agentId), 40) || "ACP child";
   const contextPrefix = `acp-spawn:${runId}`;
   const logPath = toTrimmedString(params.logPath);
+  let logDirReady = false;
+  let pendingLogLines = "";
+  let logFlushScheduled = false;
+  let logWriteChain: Promise<void> = Promise.resolve();
+  const flushLogBuffer = () => {
+    if (!logPath || !pendingLogLines) {
+      return;
+    }
+    const chunk = pendingLogLines;
+    pendingLogLines = "";
+    logWriteChain = logWriteChain
+      .then(async () => {
+        if (!logDirReady) {
+          await mkdir(path.dirname(logPath), {
+            recursive: true,
+          });
+          logDirReady = true;
+        }
+        await appendFile(logPath, chunk, {
+          encoding: "utf-8",
+          mode: 0o600,
+        });
+      })
+      .catch(() => {
+        // Best-effort diagnostics; never break relay flow.
+      });
+  };
+  const scheduleLogFlush = () => {
+    if (!logPath || logFlushScheduled) {
+      return;
+    }
+    logFlushScheduled = true;
+    queueMicrotask(() => {
+      logFlushScheduled = false;
+      flushLogBuffer();
+    });
+  };
   const writeLogLine = (entry: Record<string, unknown>) => {
     if (!logPath) {
       return;
     }
     try {
-      fs.mkdirSync(path.dirname(logPath), {
-        recursive: true,
-      });
-      const line = `${JSON.stringify(entry)}\n`;
-      fs.appendFileSync(logPath, line, {
-        encoding: "utf-8",
-        mode: 0o600,
-      });
+      pendingLogLines += `${JSON.stringify(entry)}\n`;
+      if (pendingLogLines.length >= 16_384) {
+        flushLogBuffer();
+        return;
+      }
+      scheduleLogFlush();
     } catch {
       // Best-effort diagnostics; never break relay flow.
     }
@@ -152,6 +191,12 @@ export function startAcpSpawnParentStreamRelay(params: {
     logEvent("system_event", { contextKey, text: cleaned });
     enqueueSystemEvent(cleaned, { sessionKey: parentSessionKey, contextKey });
     wake();
+  };
+  const emitStartNotice = () => {
+    emit(
+      `Started ${relayLabel} session ${params.childSessionKey}. Streaming progress updates to parent session.`,
+      `${contextPrefix}:start`,
+    );
   };
 
   let disposed = false;
@@ -229,10 +274,9 @@ export function startAcpSpawnParentStreamRelay(params: {
   }, maxRelayLifetimeMs);
   relayLifetimeTimer.unref?.();
 
-  emit(
-    `Started ${relayLabel} session ${params.childSessionKey}. Streaming progress updates to parent session.`,
-    `${contextPrefix}:start`,
-  );
+  if (params.emitStartNotice !== false) {
+    emitStartNotice();
+  }
 
   const unsubscribe = onAgentEvent((event) => {
     if (disposed || event.runId !== runId) {
@@ -314,9 +358,18 @@ export function startAcpSpawnParentStreamRelay(params: {
     disposed = true;
     clearFlushTimer();
     clearRelayLifetimeTimer();
+    flushLogBuffer();
     clearInterval(noOutputWatcherTimer);
     unsubscribe();
   };
 
-  return dispose;
+  return {
+    dispose,
+    notifyStarted: emitStartNotice,
+  };
 }
+
+export type AcpSpawnParentRelayHandle = {
+  dispose: () => void;
+  notifyStarted: () => void;
+};

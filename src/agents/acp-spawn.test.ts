@@ -143,6 +143,16 @@ function createSessionBinding(overrides?: Partial<SessionBindingRecord>): Sessio
   };
 }
 
+function createRelayHandle(overrides?: {
+  dispose?: ReturnType<typeof vi.fn>;
+  notifyStarted?: ReturnType<typeof vi.fn>;
+}) {
+  return {
+    dispose: overrides?.dispose ?? vi.fn(),
+    notifyStarted: overrides?.notifyStarted ?? vi.fn(),
+  };
+}
+
 function expectResolvedIntroTextInBindMetadata(): void {
   const callWithMetadata = hoisted.sessionBindingBindMock.mock.calls.find(
     (call: unknown[]) =>
@@ -247,7 +257,9 @@ describe("spawnAcpDirect", () => {
     hoisted.sessionBindingResolveByConversationMock.mockReset().mockReturnValue(null);
     hoisted.sessionBindingListBySessionMock.mockReset().mockReturnValue([]);
     hoisted.sessionBindingUnbindMock.mockReset().mockResolvedValue([]);
-    hoisted.startAcpSpawnParentStreamRelayMock.mockReset().mockReturnValue(vi.fn());
+    hoisted.startAcpSpawnParentStreamRelayMock
+      .mockReset()
+      .mockImplementation(() => createRelayHandle());
     hoisted.resolveAcpSpawnStreamLogPathMock
       .mockReset()
       .mockReturnValue("/tmp/sess-main.acp-stream.jsonl");
@@ -440,6 +452,13 @@ describe("spawnAcpDirect", () => {
   });
 
   it('streams ACP progress to parent when streamTo="parent"', async () => {
+    const firstHandle = createRelayHandle();
+    const secondHandle = createRelayHandle();
+    hoisted.startAcpSpawnParentStreamRelayMock
+      .mockReset()
+      .mockReturnValueOnce(firstHandle)
+      .mockReturnValueOnce(secondHandle);
+
     const result = await spawnAcpDirect(
       {
         task: "Investigate flaky tests",
@@ -473,6 +492,7 @@ describe("spawnAcpDirect", () => {
         parentSessionKey: "agent:main:main",
         agentId: "codex",
         logPath: "/tmp/sess-main.acp-stream.jsonl",
+        emitStartNotice: false,
       }),
     );
     const relayRuns = hoisted.startAcpSpawnParentStreamRelayMock.mock.calls.map(
@@ -483,11 +503,46 @@ describe("spawnAcpDirect", () => {
     expect(hoisted.resolveAcpSpawnStreamLogPathMock).toHaveBeenCalledWith({
       childSessionKey: expect.stringMatching(/^agent:codex:acp:/),
     });
+    expect(firstHandle.dispose).toHaveBeenCalledTimes(1);
+    expect(firstHandle.notifyStarted).not.toHaveBeenCalled();
+    expect(secondHandle.notifyStarted).toHaveBeenCalledTimes(1);
+  });
+
+  it("announces parent relay start only after successful child dispatch", async () => {
+    const firstHandle = createRelayHandle();
+    const secondHandle = createRelayHandle();
+    hoisted.startAcpSpawnParentStreamRelayMock
+      .mockReset()
+      .mockReturnValueOnce(firstHandle)
+      .mockReturnValueOnce(secondHandle);
+
+    const result = await spawnAcpDirect(
+      {
+        task: "Investigate flaky tests",
+        agentId: "codex",
+        streamTo: "parent",
+      },
+      {
+        agentSessionKey: "agent:main:main",
+      },
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(firstHandle.notifyStarted).not.toHaveBeenCalled();
+    expect(secondHandle.notifyStarted).toHaveBeenCalledTimes(1);
+    const notifyOrder = secondHandle.notifyStarted.mock.invocationCallOrder;
+    const agentCallIndex = hoisted.callGatewayMock.mock.calls.findIndex(
+      (call: unknown[]) => (call[0] as { method?: string }).method === "agent",
+    );
+    const agentCallOrder = hoisted.callGatewayMock.mock.invocationCallOrder[agentCallIndex];
+    expect(typeof agentCallOrder).toBe("number");
+    expect(typeof notifyOrder[0]).toBe("number");
+    expect(notifyOrder[0] > agentCallOrder).toBe(true);
   });
 
   it("disposes pre-registered parent relay when initial ACP dispatch fails", async () => {
-    const relayDispose = vi.fn();
-    hoisted.startAcpSpawnParentStreamRelayMock.mockReturnValueOnce(relayDispose);
+    const relayHandle = createRelayHandle();
+    hoisted.startAcpSpawnParentStreamRelayMock.mockReturnValueOnce(relayHandle);
     hoisted.callGatewayMock.mockImplementation(async (argsUnknown: unknown) => {
       const args = argsUnknown as { method?: string };
       if (args.method === "sessions.patch") {
@@ -515,7 +570,8 @@ describe("spawnAcpDirect", () => {
 
     expect(result.status).toBe("error");
     expect(result.error).toContain("agent dispatch failed");
-    expect(relayDispose).toHaveBeenCalledTimes(1);
+    expect(relayHandle.dispose).toHaveBeenCalledTimes(1);
+    expect(relayHandle.notifyStarted).not.toHaveBeenCalled();
   });
 
   it('rejects streamTo="parent" without requester session context', async () => {
