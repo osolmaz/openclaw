@@ -16,6 +16,7 @@ vi.mock("../subagent-spawn.js", () => ({
 
 vi.mock("../acp-spawn.js", () => ({
   ACP_SPAWN_MODES: ["run", "session"],
+  ACP_SPAWN_STREAM_TARGETS: ["parent"],
   spawnAcpDirect: (...args: unknown[]) => hoisted.spawnAcpDirectMock(...args),
 }));
 
@@ -94,6 +95,7 @@ describe("sessions_spawn tool", () => {
       cwd: "/workspace",
       thread: true,
       mode: "session",
+      streamTo: "parent",
     });
 
     expect(result.details).toMatchObject({
@@ -108,6 +110,7 @@ describe("sessions_spawn tool", () => {
         cwd: "/workspace",
         thread: true,
         mode: "session",
+        streamTo: "parent",
       }),
       expect.objectContaining({
         agentSessionKey: "agent:main:main",
