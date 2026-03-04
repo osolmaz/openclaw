@@ -354,27 +354,18 @@ export async function preflightDiscordMessage(
       conversationId: messageChannelId,
       parentConversationId: earlyThreadParentId,
     }) ?? undefined;
-  if (!threadBinding) {
-    const configured = resolveConfiguredAcpBindingRecord({
-      cfg: freshCfg,
-      channel: "discord",
-      accountId: params.accountId,
-      conversationId: messageChannelId,
-      parentConversationId: earlyThreadParentId,
-    });
-    if (configured) {
-      const ensured = await ensureConfiguredAcpBindingSession({
-        cfg: freshCfg,
-        spec: configured.spec,
-      });
-      if (ensured.ok) {
-        threadBinding = configured.record;
-      } else {
-        logVerbose(
-          `discord: configured ACP binding unavailable for channel ${configured.spec.conversationId}: ${ensured.error}`,
-        );
-      }
-    }
+  const configuredBinding =
+    threadBinding == null
+      ? resolveConfiguredAcpBindingRecord({
+          cfg: freshCfg,
+          channel: "discord",
+          accountId: params.accountId,
+          conversationId: messageChannelId,
+          parentConversationId: earlyThreadParentId,
+        })
+      : null;
+  if (!threadBinding && configuredBinding) {
+    threadBinding = configuredBinding.record;
   }
   if (
     shouldIgnoreBoundThreadWebhookMessage({
@@ -394,6 +385,7 @@ export async function preflightDiscordMessage(
         ...route,
         sessionKey: boundSessionKey,
         agentId: boundAgentId ?? route.agentId,
+        matchedBy: "binding.channel" as const,
       }
     : route;
   const isBoundThreadSession = Boolean(boundSessionKey && earlyThreadChannel);
@@ -764,6 +756,18 @@ export async function preflightDiscordMessage(
     logDebug(`[discord-preflight] drop: empty content`);
     logVerbose(`discord: drop message ${message.id} (empty content)`);
     return null;
+  }
+  if (configuredBinding) {
+    const ensured = await ensureConfiguredAcpBindingSession({
+      cfg: freshCfg,
+      spec: configuredBinding.spec,
+    });
+    if (!ensured.ok) {
+      logVerbose(
+        `discord: configured ACP binding unavailable for channel ${configuredBinding.spec.conversationId}: ${ensured.error}`,
+      );
+      return null;
+    }
   }
 
   logDebug(
