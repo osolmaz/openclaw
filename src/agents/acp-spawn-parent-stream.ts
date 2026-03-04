@@ -285,10 +285,11 @@ export function startAcpSpawnParentStreamRelay(params: {
 
     if (event.stream === "assistant") {
       const data = event.data;
-      const delta =
-        toTrimmedString((data as { delta?: unknown } | undefined)?.delta) ??
-        toTrimmedString((data as { text?: unknown } | undefined)?.text);
-      if (!delta) {
+      const deltaCandidate =
+        (data as { delta?: unknown } | undefined)?.delta ??
+        (data as { text?: unknown } | undefined)?.text;
+      const delta = typeof deltaCandidate === "string" ? deltaCandidate : undefined;
+      if (!delta || !delta.trim()) {
         return;
       }
       logEvent("assistant_delta", { delta });

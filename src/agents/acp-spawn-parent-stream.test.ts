@@ -178,6 +178,37 @@ describe("startAcpSpawnParentStreamRelay", () => {
     relay.dispose();
   });
 
+  it("preserves delta whitespace boundaries in progress relays", () => {
+    const relay = startAcpSpawnParentStreamRelay({
+      runId: "run-5",
+      parentSessionKey: "agent:main:main",
+      childSessionKey: "agent:codex:acp:child-5",
+      agentId: "codex",
+      streamFlushMs: 10,
+      noOutputNoticeMs: 120_000,
+    });
+
+    emitAgentEvent({
+      runId: "run-5",
+      stream: "assistant",
+      data: {
+        delta: "hello",
+      },
+    });
+    emitAgentEvent({
+      runId: "run-5",
+      stream: "assistant",
+      data: {
+        delta: " world",
+      },
+    });
+    vi.advanceTimersByTime(15);
+
+    const texts = collectedTexts();
+    expect(texts.some((text) => text.includes("codex: hello world"))).toBe(true);
+    relay.dispose();
+  });
+
   it("resolves ACP spawn stream log path from session metadata", () => {
     readAcpSessionEntryMock.mockReturnValue({
       storePath: "/tmp/openclaw/agents/codex/sessions/sessions.json",
