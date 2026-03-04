@@ -7,7 +7,7 @@ Status: Draft
 Introduce persistent ACP bindings that map:
 
 - Discord channels (and existing threads, where needed), and
-- Telegram topics (`chatId:topic:topicId`)
+- Telegram forum topics in groups/supergroups (`chatId:topic:topicId`)
 
 to long-lived ACP sessions, with binding state stored in `openclaw.json` alongside each channel/topic node.
 
@@ -15,13 +15,13 @@ This makes ACP usage in high-traffic messaging channels predictable and durable,
 
 ## Why
 
-Current thread-bound ACP behavior is optimized for ephemeral Discord thread workflows. Telegram does not have the same thread model; it has forum topics and DM topics. Users want stable, always-on ACP “workspaces” in chat surfaces, not only temporary thread sessions.
+Current thread-bound ACP behavior is optimized for ephemeral Discord thread workflows. Telegram does not have the same thread model; it has forum topics in groups/supergroups. Users want stable, always-on ACP “workspaces” in chat surfaces, not only temporary thread sessions.
 
 ## Goals
 
 - Support durable ACP binding for:
   - Discord channels/threads
-  - Telegram forum topics and DM topics
+  - Telegram forum topics (groups/supergroups)
 - Make binding source-of-truth config-driven.
 - Keep `/acp`, `/new`, `/reset`, `/focus`, and delivery behavior consistent across Discord and Telegram.
 - Preserve existing temporary binding flows for ad-hoc usage.
@@ -31,6 +31,8 @@ Current thread-bound ACP behavior is optimized for ephemeral Discord thread work
 - Full redesign of ACP runtime/session internals.
 - Removing existing ephemeral binding flows.
 - Expanding to every channel in the first iteration.
+- Implementing Telegram channel direct-messages topics (`direct_messages_topic_id`) in this phase.
+- Implementing Telegram private-chat topic variants in this phase.
 
 ## UX Direction
 
@@ -106,21 +108,6 @@ Use channel-local binding config under existing channel structures (`channels.di
           },
         },
       },
-      "direct": {
-        "123456789": {
-          "topics": {
-            "99": {
-              "bindings": {
-                "acp": {
-                  "enabled": true,
-                  "agentId": "codex",
-                  "mode": "persistent",
-                },
-              },
-            },
-          },
-        },
-      },
     },
   },
 }
@@ -154,7 +141,7 @@ Notes:
   - resolve/list/bind/unbind/touch by canonical conversation ID.
 - **Channel-local binding readers**:
   - read Discord `guilds.*.channels.*.bindings.acp`,
-  - read Telegram `groups.*.topics.*.bindings.acp` and `direct.*.topics.*.bindings.acp`,
+  - read Telegram `groups.*.topics.*.bindings.acp`,
   - normalize into runtime binding intents.
 - **Inbound binding resolution for Telegram**:
   - resolve bound session before route finalization (Discord already does this).
@@ -175,7 +162,7 @@ Notes:
 - Implement Telegram binding adapter and inbound bound-session override.
 - Add schema + validation for Telegram topic-local `bindings.acp` in:
   - forum topics (`channels.telegram.groups.<chatId>.topics.<topicId>`)
-  - DM topics (`channels.telegram.direct.<chatId>.topics.<topicId>`)
+- Do not include Telegram direct/private topic variants in this phase.
 
 ### Phase 3: Command parity and resets
 
