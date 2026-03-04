@@ -8,6 +8,7 @@ import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
+import { scopedHeartbeatWakeOptions } from "../routing/session-key.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
 import {
   analyzeBootstrapBudget,
@@ -350,7 +351,9 @@ export async function runCliAgent(params: {
                 "For Claude Code, prefer --permission-mode bypassPermissions --print.",
               ].join(" ");
               enqueueSystemEvent(stallNotice, { sessionKey: params.sessionKey });
-              requestHeartbeatNow({ reason: "cli:watchdog:stall" });
+              requestHeartbeatNow(
+                scopedHeartbeatWakeOptions(params.sessionKey, { reason: "cli:watchdog:stall" }),
+              );
             }
             throw new FailoverError(timeoutReason, {
               reason: "timeout",
