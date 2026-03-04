@@ -1068,6 +1068,19 @@ describe("handleCommands ACP-bound /new and /reset", () => {
     expect(result.shouldContinue).toBe(true);
     expect(resetAcpSessionInPlaceMock).not.toHaveBeenCalled();
   });
+
+  it("skips ACP in-place reset when runtime routing already fell back to a non-ACP session", async () => {
+    const fallbackSessionKey = `agent:main:discord:channel:${discordChannelId}`;
+    const params = buildDiscordBoundParams("/new");
+    params.sessionKey = fallbackSessionKey;
+    params.ctx.SessionKey = fallbackSessionKey;
+    params.ctx.CommandTargetSessionKey = fallbackSessionKey;
+
+    const result = await handleCommands(params);
+
+    expect(result.shouldContinue).toBe(true);
+    expect(resetAcpSessionInPlaceMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("handleCommands context", () => {
