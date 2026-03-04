@@ -685,6 +685,53 @@ Default slash command settings:
 
   </Accordion>
 
+  <Accordion title="Persistent ACP channel bindings">
+    For stable "always-on" ACP workspaces, configure ACP bindings directly on Discord channel nodes.
+
+    Config path:
+
+    - `channels.discord.guilds.<guildId>.channels.<channelId>.bindings.acp`
+
+    Example:
+
+```json5
+{
+  channels: {
+    discord: {
+      guilds: {
+        "1459246755253325866": {
+          channels: {
+            "1478836151241412759": {
+              requireMention: false,
+              bindings: {
+                acp: {
+                  enabled: true,
+                  agentId: "codex",
+                  mode: "persistent",
+                  cwd: "/workspace/openclaw",
+                  backend: "acpx",
+                  label: "codex-main",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+    Notes:
+
+    - Thread messages can inherit the parent channel ACP binding.
+    - In a bound channel or thread, `/new` and `/reset` reset the same ACP session in place.
+    - Temporary thread bindings still work and can override target resolution while active.
+
+    See [ACP Agents](/tools/acp-agents) for binding behavior details.
+
+  </Accordion>
+
   <Accordion title="Reaction notifications">
     Per-guild reaction notification mode:
 
@@ -1120,7 +1167,7 @@ High-signal Discord fields:
 - actions: `actions.*`
 - presence: `activity`, `status`, `activityType`, `activityUrl`
 - UI: `ui.components.accentColor`
-- features: `pluralkit`, `execApprovals`, `intents`, `agentComponents`, `heartbeat`, `responsePrefix`
+- features: `threadBindings`, `guilds.*.channels.*.bindings.acp`, `pluralkit`, `execApprovals`, `intents`, `agentComponents`, `heartbeat`, `responsePrefix`
 
 ## Safety and operations
 

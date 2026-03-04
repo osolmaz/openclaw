@@ -3,6 +3,7 @@ summary: "Use ACP runtime sessions for Pi, Claude Code, Codex, OpenCode, Gemini 
 read_when:
   - Running coding harnesses through ACP
   - Setting up thread-bound ACP sessions on thread-capable channels
+  - Binding Discord channels or Telegram forum topics to persistent ACP sessions
   - Troubleshooting ACP backend and plugin wiring
   - Operating /acp commands from chat
 title: "ACP Agents"
@@ -84,6 +85,95 @@ Required feature flags for thread-bound ACP:
 - Any channel adapter that exposes session/thread binding capability.
 - Current built-in support: Discord.
 - Plugin channels can add support through the same binding interface.
+
+## Channel specific settings
+
+For non-ephemeral workflows, configure ACP bindings directly on channel or topic nodes.
+
+### Discord
+
+Persistent ACP channel binding path:
+
+- `channels.discord.guilds.<guildId>.channels.<channelId>.bindings.acp`
+
+Thread behavior:
+
+- Messages inside a thread can inherit the parent channel ACP binding.
+- `/new` and `/reset` in the bound conversation reset the same ACP session key in place.
+
+### Telegram
+
+Persistent ACP topic binding path:
+
+- `channels.telegram.groups.<chatId>.topics.<threadId>.bindings.acp`
+
+Scope notes:
+
+- This binding shape is for forum topics in groups and supergroups.
+- Use canonical topic identity: `chatId:topic:topicId`.
+
+### Shared binding fields
+
+- `enabled` (optional, default enabled when present)
+- `agentId` (required to activate binding)
+- `mode` (`persistent` or `oneshot`, default `persistent`)
+- `label` (optional)
+- `cwd` (optional)
+- `backend` (optional; falls back to global `acp.backend`)
+
+Example:
+
+```json5
+{
+  channels: {
+    discord: {
+      guilds: {
+        "1459246755253325866": {
+          channels: {
+            "1478836151241412759": {
+              bindings: {
+                acp: {
+                  enabled: true,
+                  agentId: "codex",
+                  mode: "persistent",
+                  cwd: "/workspace/openclaw",
+                  backend: "acpx",
+                  label: "codex-main",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    telegram: {
+      groups: {
+        "-1001234567890": {
+          topics: {
+            "42": {
+              bindings: {
+                acp: {
+                  enabled: true,
+                  agentId: "claude",
+                  mode: "persistent",
+                  cwd: "/workspace/repo-b",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}
+```
+
+Behavior:
+
+- OpenClaw ensures the configured ACP session exists before use.
+- Messages in that channel or topic route to the configured ACP session.
+- In bound conversations, `/new` and `/reset` reset the same ACP session key in place.
+- Temporary runtime bindings (for example created by thread-focus flows) still apply where present.
 
 ## Start ACP sessions (interfaces)
 
