@@ -37,9 +37,14 @@ async function resolveSessionKeyByToken(token: string): Promise<string | null> {
 }
 
 export function resolveBoundAcpThreadSessionKey(params: HandleCommandsParams): string | undefined {
+  const commandTargetSessionKey =
+    typeof params.ctx.CommandTargetSessionKey === "string"
+      ? params.ctx.CommandTargetSessionKey.trim()
+      : "";
+  const activeSessionKey = commandTargetSessionKey || params.sessionKey.trim();
   const bindingContext = resolveAcpCommandBindingContext(params);
   if (!bindingContext.channel || !bindingContext.conversationId) {
-    return undefined;
+    return activeSessionKey && isAcpSessionKey(activeSessionKey) ? activeSessionKey : undefined;
   }
   const serviceBinding = getSessionBindingService().resolveByConversation({
     channel: bindingContext.channel,
@@ -52,10 +57,6 @@ export function resolveBoundAcpThreadSessionKey(params: HandleCommandsParams): s
   if (serviceSessionKey) {
     return serviceSessionKey;
   }
-  const commandTargetSessionKey =
-    typeof params.ctx.CommandTargetSessionKey === "string"
-      ? params.ctx.CommandTargetSessionKey.trim()
-      : "";
   const configuredBinding = resolveConfiguredAcpBindingRecord({
     cfg: params.cfg,
     channel: bindingContext.channel,
@@ -67,11 +68,7 @@ export function resolveBoundAcpThreadSessionKey(params: HandleCommandsParams): s
   if (binding && binding.targetKind === "session") {
     return binding.targetSessionKey.trim() || undefined;
   }
-  const activeSessionKey = commandTargetSessionKey || params.sessionKey.trim();
-  if (activeSessionKey && !isAcpSessionKey(activeSessionKey)) {
-    return undefined;
-  }
-  return undefined;
+  return activeSessionKey && isAcpSessionKey(activeSessionKey) ? activeSessionKey : undefined;
 }
 
 export async function resolveAcpTargetSessionKey(params: {

@@ -183,7 +183,7 @@ function resolveBoundAcpSessionForReset(params: {
 
   const bindingContext = resolveAcpResetBindingContext(params.ctx);
   if (!bindingContext) {
-    return undefined;
+    return activeSessionKey && isAcpSessionKey(activeSessionKey) ? activeSessionKey : undefined;
   }
 
   const serviceBinding = getSessionBindingService().resolveByConversation({

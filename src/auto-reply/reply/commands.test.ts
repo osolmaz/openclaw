@@ -1129,6 +1129,46 @@ describe("handleCommands ACP-bound /new and /reset", () => {
       reason: "new",
     });
   });
+
+  it("uses active ACP command target when conversation binding context is missing", async () => {
+    resetAcpSessionInPlaceMock.mockResolvedValue({ ok: true } as const);
+    const activeAcpTarget = "agent:codex:acp:binding:discord:default:feedface";
+    const params = buildParams(
+      "/new",
+      {
+        commands: { text: true },
+        channels: {
+          discord: {
+            allowFrom: ["*"],
+          },
+        },
+      } as OpenClawConfig,
+      {
+        Provider: "discord",
+        Surface: "discord",
+        OriginatingChannel: "discord",
+        AccountId: "default",
+        SenderId: "12345",
+        From: "discord:12345",
+      },
+    );
+    params.sessionKey = "discord:slash:12345";
+    params.ctx.SessionKey = "discord:slash:12345";
+    params.ctx.CommandSource = "native";
+    params.ctx.CommandTargetSessionKey = activeAcpTarget;
+    params.ctx.To = "user:12345";
+    params.ctx.OriginatingTo = "user:12345";
+
+    const result = await handleCommands(params);
+
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("ACP session reset in place");
+    expect(resetAcpSessionInPlaceMock).toHaveBeenCalledTimes(1);
+    expect(resetAcpSessionInPlaceMock.mock.calls[0]?.[0]).toMatchObject({
+      sessionKey: activeAcpTarget,
+      reason: "new",
+    });
+  });
 });
 
 describe("handleCommands context", () => {

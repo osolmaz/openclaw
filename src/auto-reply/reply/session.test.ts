@@ -516,6 +516,51 @@ describe("initSessionState RawBody", () => {
     expect(result.isNewSession).toBe(false);
   });
 
+  it("does not rotate local session state for ACP /new when conversation IDs are unavailable", async () => {
+    const root = await makeCaseDir("openclaw-rawbody-acp-reset-no-conversation-");
+    const storePath = path.join(root, "sessions.json");
+    const sessionKey = "agent:codex:acp:binding:discord:default:feedface";
+    const existingSessionId = "session-existing";
+    const now = Date.now();
+
+    await writeSessionStoreFast(storePath, {
+      [sessionKey]: {
+        sessionId: existingSessionId,
+        updatedAt: now,
+        systemSent: true,
+      },
+    });
+
+    const cfg = {
+      session: { store: storePath },
+      channels: {
+        discord: {
+          allowFrom: ["*"],
+        },
+      },
+    } as OpenClawConfig;
+
+    const result = await initSessionState({
+      ctx: {
+        RawBody: "/new",
+        CommandBody: "/new",
+        Provider: "discord",
+        Surface: "discord",
+        SenderId: "12345",
+        From: "discord:12345",
+        To: "user:12345",
+        OriginatingTo: "user:12345",
+        SessionKey: sessionKey,
+      },
+      cfg,
+      commandAuthorized: true,
+    });
+
+    expect(result.resetTriggered).toBe(false);
+    expect(result.sessionId).toBe(existingSessionId);
+    expect(result.isNewSession).toBe(false);
+  });
+
   it("keeps custom reset triggers working on bound ACP sessions", async () => {
     const root = await makeCaseDir("openclaw-rawbody-acp-custom-reset-");
     const storePath = path.join(root, "sessions.json");
