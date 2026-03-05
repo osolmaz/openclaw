@@ -1547,7 +1547,7 @@ async function dispatchDiscordCommandInteraction(params: {
   });
   const threadBinding = isThreadChannel ? threadBindings.getByThreadId(rawChannelId) : undefined;
   const configuredBinding =
-    threadBinding == null && !isDirectMessage
+    threadBinding == null
       ? resolveConfiguredAcpBindingRecord({
           cfg,
           channel: "discord",
