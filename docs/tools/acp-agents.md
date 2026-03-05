@@ -153,7 +153,7 @@ Example:
       match: {
         channel: "discord",
         accountId: "default",
-        peer: { kind: "channel", id: "1478836151241412759" },
+        peer: { kind: "channel", id: "222222222222222222" },
       },
       acp: { label: "codex-main" },
     },
@@ -181,9 +181,9 @@ Example:
   channels: {
     discord: {
       guilds: {
-        "1459246755253325866": {
+        "111111111111111111": {
           channels: {
-            "1478836151241412759": { requireMention: false },
+            "222222222222222222": { requireMention: false },
           },
         },
       },
