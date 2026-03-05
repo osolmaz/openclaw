@@ -133,6 +133,17 @@ export async function emitResetCommandHooks(params: {
   }
 }
 
+function applyAcpResetTailContext(ctx: HandleCommandsParams["ctx"], resetTail: string): void {
+  const mutableCtx = ctx as Record<string, unknown>;
+  mutableCtx.Body = resetTail;
+  mutableCtx.RawBody = resetTail;
+  mutableCtx.CommandBody = resetTail;
+  mutableCtx.BodyForCommands = resetTail;
+  mutableCtx.BodyForAgent = resetTail;
+  mutableCtx.BodyStripped = resetTail;
+  mutableCtx.AcpDispatchTailAfterReset = true;
+}
+
 export async function handleCommands(params: HandleCommandsParams): Promise<CommandHandlerResult> {
   if (HANDLERS === null) {
     HANDLERS = [
@@ -207,15 +218,12 @@ export async function handleCommands(params: HandleCommandsParams): Promise<Comm
           workspaceDir: params.workspaceDir,
         });
         if (resetTail) {
-          const mutableCtx = params.ctx as Record<string, unknown>;
-          mutableCtx.Body = resetTail;
-          mutableCtx.RawBody = resetTail;
-          mutableCtx.CommandBody = resetTail;
-          mutableCtx.BodyForCommands = resetTail;
-          mutableCtx.BodyForAgent = resetTail;
-          mutableCtx.BodyStripped = resetTail;
+          applyAcpResetTailContext(params.ctx, resetTail);
+          if (params.rootCtx && params.rootCtx !== params.ctx) {
+            applyAcpResetTailContext(params.rootCtx, resetTail);
+          }
           return {
-            shouldContinue: true,
+            shouldContinue: false,
           };
         }
         return {

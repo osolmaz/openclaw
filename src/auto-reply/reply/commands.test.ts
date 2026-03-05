@@ -1062,11 +1062,12 @@ describe("handleCommands ACP-bound /new and /reset", () => {
     const params = buildDiscordBoundParams("/new continue with deployment");
     const result = await handleCommands(params);
 
-    expect(result.shouldContinue).toBe(true);
+    expect(result.shouldContinue).toBe(false);
     expect(result.reply).toBeUndefined();
     const mutableCtx = params.ctx as Record<string, unknown>;
     expect(mutableCtx.BodyStripped).toBe("continue with deployment");
     expect(mutableCtx.CommandBody).toBe("continue with deployment");
+    expect(mutableCtx.AcpDispatchTailAfterReset).toBe(true);
     expect(resetAcpSessionInPlaceMock).toHaveBeenCalledTimes(1);
   });
 

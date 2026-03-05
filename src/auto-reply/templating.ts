@@ -133,6 +133,11 @@ export type MsgContext = {
   CommandAuthorized?: boolean;
   CommandSource?: "text" | "native";
   CommandTargetSessionKey?: string;
+  /**
+   * Internal flag: command handling prepared trailing prompt text for ACP dispatch.
+   * Used for `/new <prompt>` and `/reset <prompt>` on ACP-bound sessions.
+   */
+  AcpDispatchTailAfterReset?: boolean;
   /** Gateway client scopes when the message originates from the gateway. */
   GatewayClientScopes?: string[];
   /** Thread identifier (Telegram topic id or Matrix thread event id). */

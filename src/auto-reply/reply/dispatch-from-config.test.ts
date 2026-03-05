@@ -912,6 +912,71 @@ describe("dispatchReplyFromConfig", () => {
     });
   });
 
+  it("routes ACP reset tails through ACP after command handling", async () => {
+    setNoAbort();
+    const runtime = createAcpRuntime([
+      { type: "text_delta", text: "tail accepted" },
+      { type: "done" },
+    ]);
+    acpMocks.readAcpSessionEntry.mockReturnValue({
+      sessionKey: "agent:codex-acp:session-1",
+      storeSessionKey: "agent:codex-acp:session-1",
+      cfg: {},
+      storePath: "/tmp/mock-sessions.json",
+      entry: {},
+      acp: {
+        backend: "acpx",
+        agent: "codex",
+        runtimeSessionName: "runtime:1",
+        mode: "persistent",
+        state: "idle",
+        lastActivityAt: Date.now(),
+      },
+    });
+    acpMocks.requireAcpRuntimeBackend.mockReturnValue({
+      id: "acpx",
+      runtime,
+    });
+
+    const cfg = {
+      acp: {
+        enabled: true,
+        dispatch: { enabled: true },
+      },
+      session: {
+        sendPolicy: {
+          default: "deny",
+        },
+      },
+    } as OpenClawConfig;
+    const dispatcher = createDispatcher();
+    const ctx = buildTestCtx({
+      Provider: "discord",
+      Surface: "discord",
+      SessionKey: "agent:codex-acp:session-1",
+      CommandBody: "/new continue with deployment",
+      BodyForCommands: "/new continue with deployment",
+      BodyForAgent: "/new continue with deployment",
+    });
+    const replyResolver = vi.fn(async (resolverCtx: MsgContext) => {
+      resolverCtx.Body = "continue with deployment";
+      resolverCtx.RawBody = "continue with deployment";
+      resolverCtx.CommandBody = "continue with deployment";
+      resolverCtx.BodyForCommands = "continue with deployment";
+      resolverCtx.BodyForAgent = "continue with deployment";
+      resolverCtx.AcpDispatchTailAfterReset = true;
+      return undefined;
+    });
+
+    await dispatchReplyFromConfig({ ctx, cfg, dispatcher, replyResolver });
+
+    expect(replyResolver).toHaveBeenCalledTimes(1);
+    expect(runtime.runTurn).toHaveBeenCalledTimes(1);
+    expect(runtime.runTurn.mock.calls[0]?.[0]).toMatchObject({
+      text: "continue with deployment",
+    });
+  });
+
   it("does not bypass ACP slash aliases when text commands are disabled on native surfaces", async () => {
     setNoAbort();
     const runtime = createAcpRuntime([{ type: "done" }]);
