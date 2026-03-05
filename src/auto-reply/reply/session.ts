@@ -176,6 +176,11 @@ function resolveBoundAcpSessionForReset(params: {
   cfg: OpenClawConfig;
   ctx: MsgContext;
 }): string | undefined {
+  const activeSessionKey = normalizeSessionText(params.ctx.SessionKey);
+  if (activeSessionKey && !isAcpSessionKey(activeSessionKey)) {
+    return undefined;
+  }
+
   const bindingContext = resolveAcpResetBindingContext(params.ctx);
   if (!bindingContext) {
     return undefined;

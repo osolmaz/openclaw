@@ -705,6 +705,63 @@ describe("initSessionState RawBody", () => {
     }
   });
 
+  it("does not suppress /new when active target session key is non-ACP even with configured ACP binding", async () => {
+    const root = await makeCaseDir("openclaw-rawbody-acp-configured-fallback-target-");
+    const storePath = path.join(root, "sessions.json");
+    const channelId = "1478836151241412759";
+    const fallbackSessionKey = "agent:main:discord:channel:focus-target";
+    const existingSessionId = "session-existing";
+    const now = Date.now();
+
+    await writeSessionStoreFast(storePath, {
+      [fallbackSessionKey]: {
+        sessionId: existingSessionId,
+        updatedAt: now,
+        systemSent: true,
+      },
+    });
+
+    const cfg = {
+      session: { store: storePath },
+      bindings: [
+        {
+          type: "acp",
+          agentId: "codex",
+          match: {
+            channel: "discord",
+            accountId: "default",
+            peer: { kind: "channel", id: channelId },
+          },
+          acp: { mode: "persistent" },
+        },
+      ],
+      channels: {
+        discord: {
+          allowFrom: ["*"],
+        },
+      },
+    } as OpenClawConfig;
+
+    const result = await initSessionState({
+      ctx: {
+        RawBody: "/new",
+        CommandBody: "/new",
+        Provider: "discord",
+        Surface: "discord",
+        SenderId: "12345",
+        From: "discord:12345",
+        To: channelId,
+        SessionKey: fallbackSessionKey,
+      },
+      cfg,
+      commandAuthorized: true,
+    });
+
+    expect(result.resetTriggered).toBe(true);
+    expect(result.isNewSession).toBe(true);
+    expect(result.sessionId).not.toBe(existingSessionId);
+  });
+
   it("uses the default per-agent sessions store when config store is unset", async () => {
     const root = await makeCaseDir("openclaw-session-store-default-");
     const stateDir = path.join(root, ".openclaw");

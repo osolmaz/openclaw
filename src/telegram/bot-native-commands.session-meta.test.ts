@@ -267,7 +267,7 @@ describe("registerTelegramNativeCommands — session metadata", () => {
     expect(dispatchCall?.ctx?.CommandTargetSessionKey).toBe(boundSessionKey);
   });
 
-  it("falls back to default routing when configured ACP topic binding cannot initialize", async () => {
+  it("aborts native command dispatch when configured ACP topic binding cannot initialize", async () => {
     const boundSessionKey = "agent:codex:acp:binding:telegram:default:feedface";
     persistentBindingMocks.resolveConfiguredAcpBindingRecord.mockReturnValue({
       spec: {
@@ -305,18 +305,11 @@ describe("registerTelegramNativeCommands — session metadata", () => {
     });
     await handler(buildStatusTopicCommandContext());
 
-    expect(replyMocks.dispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalledTimes(1);
-    const dispatchCall = (
-      replyMocks.dispatchReplyWithBufferedBlockDispatcher.mock.calls as unknown as Array<
-        [{ ctx?: { CommandTargetSessionKey?: string } }]
-      >
-    )[0]?.[0];
-    expect(dispatchCall?.ctx?.CommandTargetSessionKey).toBeTruthy();
-    expect(dispatchCall?.ctx?.CommandTargetSessionKey).not.toBe(boundSessionKey);
-    expect(sendMessage).not.toHaveBeenCalledWith(
+    expect(replyMocks.dispatchReplyWithBufferedBlockDispatcher).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
       -1001234567890,
       "Configured ACP binding is unavailable right now. Please try again.",
-      expect.anything(),
+      expect.objectContaining({ message_thread_id: 42 }),
     );
   });
 

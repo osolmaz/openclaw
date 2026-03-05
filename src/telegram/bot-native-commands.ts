@@ -419,7 +419,14 @@ export const registerTelegramNativeCommands = ({
     isGroup: boolean;
     isForum: boolean;
     resolvedThreadId?: number;
-  }) => {
+  }): Promise<{
+    chatId: number;
+    threadSpec: ReturnType<typeof resolveTelegramThreadSpec>;
+    route: ReturnType<typeof resolveAgentRoute>;
+    mediaLocalRoots: readonly string[] | undefined;
+    tableMode: ReturnType<typeof resolveMarkdownTableMode>;
+    chunkMode: ReturnType<typeof resolveChunkMode>;
+  } | null> => {
     const { msg, isGroup, isForum, resolvedThreadId } = params;
     const chatId = msg.chat.id;
     const messageThreadId = (msg as { message_thread_id?: number }).message_thread_id;
@@ -456,17 +463,27 @@ export const registerTelegramNativeCommands = ({
         logVerbose(
           `telegram native command: configured ACP binding unavailable for topic ${configuredBinding.spec.conversationId}: ${ensured.error}`,
         );
-      } else {
-        const configuredSessionKey = configuredBinding.record.targetSessionKey?.trim() ?? "";
-        if (configuredSessionKey) {
-          const boundAgentId = resolveAgentIdFromSessionKey(configuredSessionKey);
-          route = {
-            ...route,
-            sessionKey: configuredSessionKey,
-            agentId: boundAgentId || route.agentId,
-            matchedBy: "binding.channel",
-          };
-        }
+        await withTelegramApiErrorLogging({
+          operation: "sendMessage",
+          runtime,
+          fn: () =>
+            bot.api.sendMessage(
+              chatId,
+              "Configured ACP binding is unavailable right now. Please try again.",
+              buildTelegramThreadParams(threadSpec) ?? {},
+            ),
+        });
+        return null;
+      }
+      const configuredSessionKey = configuredBinding.record.targetSessionKey?.trim() ?? "";
+      if (configuredSessionKey) {
+        const boundAgentId = resolveAgentIdFromSessionKey(configuredSessionKey);
+        route = {
+          ...route,
+          sessionKey: configuredSessionKey,
+          agentId: boundAgentId || route.agentId,
+          matchedBy: "binding.channel",
+        };
       }
     }
     const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
@@ -572,6 +589,9 @@ export const registerTelegramNativeCommands = ({
             isForum,
             resolvedThreadId,
           });
+          if (!runtimeContext) {
+            return;
+          }
           const { route, mediaLocalRoots, tableMode, chunkMode } = runtimeContext;
           const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
             chatId,
@@ -795,6 +815,9 @@ export const registerTelegramNativeCommands = ({
             isForum,
             resolvedThreadId,
           });
+          if (!runtimeContext) {
+            return;
+          }
           const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } = runtimeContext;
           const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
             chatId,
