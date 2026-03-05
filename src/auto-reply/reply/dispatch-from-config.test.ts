@@ -178,7 +178,7 @@ function createAcpRuntime(events: Array<Record<string, unknown>>) {
           runtimeSessionName: `${input.sessionKey}:${input.mode}`,
         }) as { sessionKey: string; backend: string; runtimeSessionName: string },
     ),
-    runTurn: vi.fn(async function* () {
+    runTurn: vi.fn(async function* (_params: { text?: string }) {
       for (const event of events) {
         yield event;
       }
