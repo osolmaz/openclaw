@@ -144,6 +144,29 @@ function applyAcpResetTailContext(ctx: HandleCommandsParams["ctx"], resetTail: s
   mutableCtx.AcpDispatchTailAfterReset = true;
 }
 
+function resolveSessionEntryForHookSessionKey(
+  sessionStore: HandleCommandsParams["sessionStore"] | undefined,
+  sessionKey: string,
+): HandleCommandsParams["sessionEntry"] | undefined {
+  if (!sessionStore) {
+    return undefined;
+  }
+  const directEntry = sessionStore[sessionKey];
+  if (directEntry) {
+    return directEntry;
+  }
+  const normalizedTarget = sessionKey.trim().toLowerCase();
+  if (!normalizedTarget) {
+    return undefined;
+  }
+  for (const [candidateKey, candidateEntry] of Object.entries(sessionStore)) {
+    if (candidateKey.trim().toLowerCase() === normalizedTarget) {
+      return candidateEntry;
+    }
+  }
+  return undefined;
+}
+
 export async function handleCommands(params: HandleCommandsParams): Promise<CommandHandlerResult> {
   if (HANDLERS === null) {
     HANDLERS = [
@@ -207,14 +230,22 @@ export async function handleCommands(params: HandleCommandsParams): Promise<Comm
         );
       }
       if (resetResult.ok) {
+        const hookSessionEntry =
+          boundAcpKey === params.sessionKey
+            ? params.sessionEntry
+            : resolveSessionEntryForHookSessionKey(params.sessionStore, boundAcpKey);
+        const hookPreviousSessionEntry =
+          boundAcpKey === params.sessionKey
+            ? params.previousSessionEntry
+            : resolveSessionEntryForHookSessionKey(params.sessionStore, boundAcpKey);
         await emitResetCommandHooks({
           action: commandAction,
           ctx: params.ctx,
           cfg: params.cfg,
           command: params.command,
-          sessionKey: params.sessionKey,
-          sessionEntry: params.sessionEntry,
-          previousSessionEntry: params.previousSessionEntry,
+          sessionKey: boundAcpKey,
+          sessionEntry: hookSessionEntry,
+          previousSessionEntry: hookPreviousSessionEntry,
           workspaceDir: params.workspaceDir,
         });
         if (resetTail) {

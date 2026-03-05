@@ -1130,6 +1130,54 @@ describe("handleCommands ACP-bound /new and /reset", () => {
     });
   });
 
+  it("emits reset hooks for the ACP session key when routing falls back to non-ACP session", async () => {
+    resetAcpSessionInPlaceMock.mockResolvedValue({ ok: true } as const);
+    const hookSpy = vi.spyOn(internalHooks, "triggerInternalHook").mockResolvedValue();
+    const fallbackSessionKey = `agent:main:discord:channel:${discordChannelId}`;
+    const configuredAcpSessionKey = buildConfiguredAcpSessionKey({
+      channel: "discord",
+      accountId: "default",
+      conversationId: discordChannelId,
+      agentId: "codex",
+      mode: "persistent",
+    });
+    const fallbackEntry = {
+      sessionId: "fallback-session-id",
+      sessionFile: "/tmp/fallback-session.jsonl",
+    } as SessionEntry;
+    const configuredEntry = {
+      sessionId: "configured-acp-session-id",
+      sessionFile: "/tmp/configured-acp-session.jsonl",
+    } as SessionEntry;
+    const params = buildDiscordBoundParams("/new");
+    params.sessionKey = fallbackSessionKey;
+    params.ctx.SessionKey = fallbackSessionKey;
+    params.ctx.CommandTargetSessionKey = fallbackSessionKey;
+    params.sessionEntry = fallbackEntry;
+    params.previousSessionEntry = fallbackEntry;
+    params.sessionStore = {
+      [fallbackSessionKey]: fallbackEntry,
+      [configuredAcpSessionKey]: configuredEntry,
+    };
+
+    const result = await handleCommands(params);
+
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("ACP session reset in place");
+    expect(hookSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command",
+        action: "new",
+        sessionKey: configuredAcpSessionKey,
+        context: expect.objectContaining({
+          sessionEntry: configuredEntry,
+          previousSessionEntry: configuredEntry,
+        }),
+      }),
+    );
+    hookSpy.mockRestore();
+  });
+
   it("uses active ACP command target when conversation binding context is missing", async () => {
     resetAcpSessionInPlaceMock.mockResolvedValue({ ok: true } as const);
     const activeAcpTarget = "agent:codex:acp:binding:discord:default:feedface";
