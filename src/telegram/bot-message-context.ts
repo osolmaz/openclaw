@@ -250,7 +250,6 @@ export const buildTelegramMessageContext = async ({
       `telegram: per-topic agent override: topic=${resolvedThreadId ?? dmThreadId} agent=${topicAgentId} sessionKey=${overrideSessionKey}`,
     );
   }
-  const routeBeforeConfiguredBinding = route;
   const configuredBinding = resolveConfiguredAcpBindingRecord({
     cfg: freshCfg,
     channel: "telegram",
@@ -390,17 +389,13 @@ export const buildTelegramMessageContext = async ({
     logVerbose(
       `telegram: configured ACP binding unavailable for ${configuredBinding.spec.conversationId}: ${ensured.error}`,
     );
-    route = routeBeforeConfiguredBinding;
-    if (requiresExplicitAccountBinding(route)) {
-      logInboundDrop({
-        log: logVerbose,
-        channel: "telegram",
-        reason: "non-default account requires explicit binding",
-        target: route.accountId,
-      });
-      return false;
-    }
-    return true;
+    logInboundDrop({
+      log: logVerbose,
+      channel: "telegram",
+      reason: "configured ACP binding unavailable",
+      target: configuredBinding.spec.conversationId,
+    });
+    return false;
   };
 
   const baseSessionKey = route.sessionKey;

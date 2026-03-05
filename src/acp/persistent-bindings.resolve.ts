@@ -27,10 +27,6 @@ function normalizeBindingChannel(value: string | undefined): ConfiguredAcpBindin
   return null;
 }
 
-function matchesAccountId(match: string | undefined, actual: string): boolean {
-  return resolveAccountMatchPriority(match, actual) > 0;
-}
-
 function resolveAccountMatchPriority(match: string | undefined, actual: string): 0 | 1 | 2 {
   const trimmed = (match ?? "").trim();
   if (!trimmed) {
@@ -133,12 +129,17 @@ export function resolveConfiguredAcpBindingSpecBySessionKey(params: {
   if (!parsedSessionKey) {
     return null;
   }
+  let wildcardMatch: ConfiguredAcpBindingSpec | null = null;
   for (const binding of listAcpBindings(params.cfg)) {
     const channel = normalizeBindingChannel(binding.match.channel);
     if (!channel || channel !== parsedSessionKey.channel) {
       continue;
     }
-    if (!matchesAccountId(binding.match.accountId, parsedSessionKey.accountId)) {
+    const accountMatchPriority = resolveAccountMatchPriority(
+      binding.match.accountId,
+      parsedSessionKey.accountId,
+    );
+    if (accountMatchPriority === 0) {
       continue;
     }
     const targetConversationId = resolveBindingConversationId(binding);
@@ -154,7 +155,12 @@ export function resolveConfiguredAcpBindingSpecBySessionKey(params: {
         binding,
       });
       if (buildConfiguredAcpSessionKey(spec) === sessionKey) {
-        return spec;
+        if (accountMatchPriority === 2) {
+          return spec;
+        }
+        if (!wildcardMatch) {
+          wildcardMatch = spec;
+        }
       }
       continue;
     }
@@ -173,10 +179,15 @@ export function resolveConfiguredAcpBindingSpecBySessionKey(params: {
       binding,
     });
     if (buildConfiguredAcpSessionKey(spec) === sessionKey) {
-      return spec;
+      if (accountMatchPriority === 2) {
+        return spec;
+      }
+      if (!wildcardMatch) {
+        wildcardMatch = spec;
+      }
     }
   }
-  return null;
+  return wildcardMatch;
 }
 
 export function resolveConfiguredAcpBindingRecord(params: {

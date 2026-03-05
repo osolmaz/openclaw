@@ -112,4 +112,25 @@ describe("buildTelegramMessageContext ACP configured bindings", () => {
     expect(resolveConfiguredAcpBindingRecordMock).toHaveBeenCalledTimes(1);
     expect(ensureConfiguredAcpBindingSessionMock).not.toHaveBeenCalled();
   });
+
+  it("drops inbound processing when configured ACP binding initialization fails", async () => {
+    ensureConfiguredAcpBindingSessionMock.mockResolvedValue({
+      ok: false,
+      sessionKey: "agent:codex:acp:binding:telegram:work:abc123",
+      error: "gateway unavailable",
+    });
+
+    const ctx = await buildTelegramMessageContextForTest({
+      accountId: "work",
+      message: {
+        chat: { id: -1001234567890, type: "supergroup", title: "OpenClaw", is_forum: true },
+        message_thread_id: 42,
+        text: "hello",
+      },
+    });
+
+    expect(ctx).toBeNull();
+    expect(resolveConfiguredAcpBindingRecordMock).toHaveBeenCalledTimes(1);
+    expect(ensureConfiguredAcpBindingSessionMock).toHaveBeenCalledTimes(1);
+  });
 });

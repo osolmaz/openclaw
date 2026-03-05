@@ -366,6 +366,51 @@ describe("resolveConfiguredAcpBindingSpecBySessionKey", () => {
     });
     expect(spec).toBeNull();
   });
+
+  it("prefers exact account ACP settings over wildcard when session keys collide", () => {
+    const cfg = {
+      ...baseCfg,
+      bindings: [
+        {
+          type: "acp",
+          agentId: "codex",
+          match: {
+            channel: "discord",
+            accountId: "*",
+            peer: { kind: "channel", id: "1478836151241412759" },
+          },
+          acp: {
+            backend: "wild",
+          },
+        },
+        {
+          type: "acp",
+          agentId: "codex",
+          match: {
+            channel: "discord",
+            accountId: "default",
+            peer: { kind: "channel", id: "1478836151241412759" },
+          },
+          acp: {
+            backend: "exact",
+          },
+        },
+      ],
+    } satisfies OpenClawConfig;
+
+    const resolved = resolveConfiguredAcpBindingRecord({
+      cfg,
+      channel: "discord",
+      accountId: "default",
+      conversationId: "1478836151241412759",
+    });
+    const spec = resolveConfiguredAcpBindingSpecBySessionKey({
+      cfg,
+      sessionKey: resolved?.record.targetSessionKey ?? "",
+    });
+
+    expect(spec?.backend).toBe("exact");
+  });
 });
 
 describe("buildConfiguredAcpSessionKey", () => {
