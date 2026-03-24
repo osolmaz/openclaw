@@ -8,12 +8,15 @@ const hoisted = vi.hoisted(() => ({
   setRuntimeApiKeyMock: vi.fn(),
   resolveCopilotApiTokenMock: vi.fn(),
   completeMock: vi.fn(),
-  prepareModelForSimpleCompletionMock: vi.fn(),
 }));
 
-vi.mock("@mariozechner/pi-ai", () => ({
-  complete: hoisted.completeMock,
-}));
+vi.mock("@mariozechner/pi-ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mariozechner/pi-ai")>();
+  return {
+    ...actual,
+    complete: hoisted.completeMock,
+  };
+});
 
 vi.mock("./pi-embedded-runner/model.js", () => ({
   resolveModel: hoisted.resolveModelMock,
@@ -26,10 +29,6 @@ vi.mock("./model-auth.js", () => ({
 
 vi.mock("./github-copilot-token.js", () => ({
   resolveCopilotApiToken: hoisted.resolveCopilotApiTokenMock,
-}));
-
-vi.mock("./simple-completion-transport.js", () => ({
-  prepareModelForSimpleCompletion: hoisted.prepareModelForSimpleCompletionMock,
 }));
 
 let prepareSimpleCompletionModel: typeof import("./simple-completion-runtime.js").prepareSimpleCompletionModel;
@@ -53,7 +52,6 @@ beforeEach(async () => {
   hoisted.setRuntimeApiKeyMock.mockReset();
   hoisted.resolveCopilotApiTokenMock.mockReset();
   hoisted.completeMock.mockReset();
-  hoisted.prepareModelForSimpleCompletionMock.mockReset();
 
   hoisted.applyLocalNoAuthHeaderOverrideMock.mockImplementation((model: unknown) => model);
 
@@ -72,9 +70,6 @@ beforeEach(async () => {
     source: "env:TEST_API_KEY",
     mode: "api-key",
   });
-  hoisted.prepareModelForSimpleCompletionMock.mockImplementation(
-    (params: { model: unknown }) => params.model,
-  );
   hoisted.resolveCopilotApiTokenMock.mockResolvedValue({
     token: "copilot-runtime-token",
     expiresAt: Date.now() + 60_000,
@@ -485,52 +480,53 @@ describe("runSimpleCompletionForAgent", () => {
     });
   });
 
-  it("routes the prepared model through the simple completion transport", async () => {
+  it("routes anthropic vertex models through the simple completion transport", async () => {
     const runtimeModel = {
       provider: "anthropic-vertex",
       id: "claude-sonnet-4-5",
       api: "openclaw-anthropic-vertex-simple:https%3A%2F%2Fvertex.example",
+      baseUrl: "https://vertex.example",
     };
+    const transportModule = await import("./simple-completion-transport.js");
+    const prepareSpy = vi
+      .spyOn(transportModule, "prepareModelForSimpleCompletion")
+      .mockReturnValue(runtimeModel);
     hoisted.resolveModelMock.mockReturnValueOnce({
       model: {
         provider: "anthropic-vertex",
         id: "claude-sonnet-4-5",
         api: "anthropic-messages",
+        baseUrl: "https://vertex.example",
       },
       authStorage: {
         setRuntimeApiKey: hoisted.setRuntimeApiKeyMock,
       },
       modelRegistry: {},
     });
-    hoisted.prepareModelForSimpleCompletionMock.mockReturnValueOnce(runtimeModel);
 
-    await runSimpleCompletionForAgent({
-      cfg: cfgWithDefaultModel("anthropic-vertex/claude-sonnet-4-5"),
-      agentId: "main",
-      context: {
-        systemPrompt: "Generate a title.",
-        messages: [],
-      },
-      options: {
-        temperature: 0.2,
-      },
-    });
+    try {
+      await runSimpleCompletionForAgent({
+        cfg: cfgWithDefaultModel("anthropic-vertex/claude-sonnet-4-5"),
+        agentId: "main",
+        context: {
+          systemPrompt: "Generate a title.",
+          messages: [],
+        },
+        options: {
+          temperature: 0.2,
+        },
+      });
 
-    expect(hoisted.prepareModelForSimpleCompletionMock).toHaveBeenCalledWith({
-      model: expect.objectContaining({
-        provider: "anthropic-vertex",
-        id: "claude-sonnet-4-5",
-        api: "anthropic-messages",
-      }),
-      cfg: cfgWithDefaultModel("anthropic-vertex/claude-sonnet-4-5"),
-    });
-    expect(hoisted.completeMock).toHaveBeenCalledWith(
-      runtimeModel,
-      expect.any(Object),
-      expect.objectContaining({
-        apiKey: "sk-test",
-        temperature: 0.2,
-      }),
-    );
+      expect(hoisted.completeMock).toHaveBeenCalledWith(
+        runtimeModel,
+        expect.any(Object),
+        expect.objectContaining({
+          apiKey: "sk-test",
+          temperature: 0.2,
+        }),
+      );
+    } finally {
+      prepareSpy.mockRestore();
+    }
   });
 });

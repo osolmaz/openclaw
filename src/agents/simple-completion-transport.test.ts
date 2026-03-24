@@ -18,15 +18,17 @@ vi.mock("./ollama-stream.js", () => ({
   createConfiguredOllamaStreamFn,
 }));
 
-import { prepareModelForSimpleCompletion } from "./simple-completion-transport.js";
+let prepareModelForSimpleCompletion: typeof import("./simple-completion-transport.js").prepareModelForSimpleCompletion;
 
 describe("prepareModelForSimpleCompletion", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     createAnthropicVertexStreamFnForModel.mockReset();
     ensureCustomApiRegistered.mockReset();
     createConfiguredOllamaStreamFn.mockReset();
     createAnthropicVertexStreamFnForModel.mockReturnValue("vertex-stream");
     createConfiguredOllamaStreamFn.mockReturnValue("ollama-stream");
+    ({ prepareModelForSimpleCompletion } = await import("./simple-completion-transport.js"));
   });
 
   it("registers the configured Ollama transport and keeps the original api", () => {
