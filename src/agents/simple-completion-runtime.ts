@@ -1,4 +1,4 @@
-import type { Api, Model } from "@mariozechner/pi-ai";
+import { complete, type Api, type Model } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveAgentDir, resolveAgentEffectiveModelPrimary } from "./agent-scope.js";
 import { DEFAULT_PROVIDER } from "./defaults.js";
@@ -53,6 +53,20 @@ export type PreparedSimpleCompletionModelForAgent =
       error: string;
       selection?: AgentSimpleCompletionSelection;
       auth?: ResolvedProviderAuth;
+    };
+
+type SimpleCompletionContext = Parameters<typeof complete>[1];
+type SimpleCompletionOptions = NonNullable<Parameters<typeof complete>[2]>;
+type SimpleCompletionOptionsInput = Omit<SimpleCompletionOptions, "apiKey">;
+
+export type SimpleCompletionRunResult =
+  | {
+      selection: AgentSimpleCompletionSelection;
+      response: Awaited<ReturnType<typeof complete>>;
+    }
+  | {
+      error: string;
+      selection?: AgentSimpleCompletionSelection;
     };
 
 export function resolveSimpleCompletionSelectionForAgent(params: {
@@ -230,4 +244,67 @@ export async function prepareSimpleCompletionModelForAgent(params: {
     model: prepared.model,
     auth: prepared.auth,
   };
+}
+
+function normalizeSimpleCompletionOptions(params: {
+  model: Model<Api>;
+  options: SimpleCompletionOptions;
+}): SimpleCompletionOptions {
+  const next: SimpleCompletionOptions = {
+    ...params.options,
+  };
+  // Codex one-shot `complete()` requests reject `temperature`, even though the
+  // streamed agent runtime path can still use provider-owned generation params.
+  if (params.model.api === "openai-codex-responses") {
+    delete next.temperature;
+  }
+  return next;
+}
+
+export async function runSimpleCompletionForAgent(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  context: SimpleCompletionContext;
+  options?: SimpleCompletionOptionsInput;
+  modelRef?: string;
+  preferredProfile?: string;
+  allowMissingApiKeyModes?: ReadonlyArray<AllowedMissingApiKeyMode>;
+}): Promise<SimpleCompletionRunResult> {
+  const prepared = await prepareSimpleCompletionModelForAgent({
+    cfg: params.cfg,
+    agentId: params.agentId,
+    ...(params.modelRef ? { modelRef: params.modelRef } : {}),
+    ...(params.preferredProfile ? { preferredProfile: params.preferredProfile } : {}),
+    ...(params.allowMissingApiKeyModes
+      ? { allowMissingApiKeyModes: params.allowMissingApiKeyModes }
+      : {}),
+  });
+  if ("error" in prepared) {
+    return {
+      error: prepared.error,
+      selection: prepared.selection,
+    };
+  }
+  try {
+    const response = await complete(
+      prepared.model,
+      params.context,
+      normalizeSimpleCompletionOptions({
+        model: prepared.model,
+        options: {
+          ...params.options,
+          apiKey: prepared.auth.apiKey,
+        },
+      }),
+    );
+    return {
+      selection: prepared.selection,
+      response,
+    };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : String(err),
+      selection: prepared.selection,
+    };
+  }
 }

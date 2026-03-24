@@ -1,7 +1,6 @@
-import { complete } from "@mariozechner/pi-ai";
 import {
   extractAssistantText,
-  prepareSimpleCompletionModelForAgent,
+  runSimpleCompletionForAgent,
 } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
@@ -14,8 +13,6 @@ const DISCORD_THREAD_TITLE_MAX_TOKENS = 24;
 const DISCORD_THREAD_TITLE_TEMPERATURE = 0.2;
 const DISCORD_THREAD_TITLE_SYSTEM_PROMPT =
   "Generate a concise Discord thread title (3-6 words). Return only the title. Use channel context when provided and avoid redundant channel-name words unless needed for clarity.";
-
-type ThreadTitleModel = Parameters<typeof complete>[0];
 
 export async function generateThreadTitle(params: {
   cfg: OpenClawConfig;
@@ -31,54 +28,60 @@ export async function generateThreadTitle(params: {
     return null;
   }
 
-  const prepared = await prepareSimpleCompletionModelForAgent({
+  const promptText = truncateThreadTitleSourceText(sourceText);
+  const userMessage = buildThreadTitleUserMessage({
+    sourceText: promptText,
+    channelName: params.channelName,
+    channelDescription: params.channelDescription,
+  });
+  const timeoutMs = resolveThreadTitleTimeoutMs(params.timeoutMs);
+  const result = await completeThreadTitle({
     cfg: params.cfg,
     agentId: params.agentId,
-    ...(params.modelRef ? { modelRef: params.modelRef } : {}),
-    allowMissingApiKeyModes: ["aws-sdk"],
+    modelRef: params.modelRef,
+    userMessage,
+    timeoutMs,
   });
-  if ("error" in prepared) {
-    const modelLabel = prepared.selection
-      ? `${prepared.selection.provider}/${prepared.selection.modelId}`
+  if ("error" in result) {
+    const modelLabel = result.selection
+      ? `${result.selection.provider}/${result.selection.modelId}`
       : "unknown";
-    logVerbose(`thread-title: ${prepared.error} (agent=${params.agentId}, model=${modelLabel})`);
+    logVerbose(`thread-title: ${result.error} (agent=${params.agentId}, model=${modelLabel})`);
     return null;
   }
 
-  try {
-    const promptText = truncateThreadTitleSourceText(sourceText);
-    const userMessage = buildThreadTitleUserMessage({
-      sourceText: promptText,
-      channelName: params.channelName,
-      channelDescription: params.channelDescription,
-    });
-    const timeoutMs = resolveThreadTitleTimeoutMs(params.timeoutMs);
-    const response = await completeThreadTitle({
-      model: prepared.model,
-      apiKey: prepared.auth.apiKey,
-      userMessage,
-      timeoutMs,
-    });
-    const generated = normalizeGeneratedThreadTitle(extractAssistantText(response));
-    return generated || null;
-  } catch (err) {
-    logVerbose(`thread-title: title generation failed for agent ${params.agentId}: ${String(err)}`);
-    return null;
+  const assistantText = extractAssistantText(result.response);
+  const generated = normalizeGeneratedThreadTitle(assistantText);
+  if (generated) {
+    return generated;
   }
+
+  const responseFailure = summarizeThreadTitleFailure(result.response);
+  if (responseFailure) {
+    const modelLabel = `${result.selection.provider}/${result.selection.modelId}`;
+    logVerbose(
+      `thread-title: empty title response for agent ${params.agentId} (model=${modelLabel}, ${responseFailure})`,
+    );
+  }
+  return null;
 }
 
 async function completeThreadTitle(params: {
-  model: ThreadTitleModel;
-  apiKey: string | undefined;
+  cfg: OpenClawConfig;
+  agentId: string;
+  modelRef?: string;
   userMessage: string;
   timeoutMs: number;
 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), params.timeoutMs);
   try {
-    return await complete(
-      params.model,
-      {
+    return await runSimpleCompletionForAgent({
+      cfg: params.cfg,
+      agentId: params.agentId,
+      ...(params.modelRef ? { modelRef: params.modelRef } : {}),
+      allowMissingApiKeyModes: ["aws-sdk"],
+      context: {
         systemPrompt: DISCORD_THREAD_TITLE_SYSTEM_PROMPT,
         messages: [
           {
@@ -88,16 +91,34 @@ async function completeThreadTitle(params: {
           },
         ],
       },
-      {
-        apiKey: params.apiKey,
+      options: {
         maxTokens: DISCORD_THREAD_TITLE_MAX_TOKENS,
         temperature: DISCORD_THREAD_TITLE_TEMPERATURE,
         signal: controller.signal,
       },
-    );
+    });
   } finally {
     clearTimeout(timer);
   }
+}
+
+function summarizeThreadTitleFailure(response: {
+  stopReason?: unknown;
+  errorMessage?: unknown;
+}): string | null {
+  const stopReason = typeof response.stopReason === "string" ? response.stopReason.trim() : "";
+  const errorMessage =
+    typeof response.errorMessage === "string" ? response.errorMessage.trim() : "";
+  if (stopReason === "error" && errorMessage) {
+    return `stopReason=error error=${errorMessage}`;
+  }
+  if (stopReason) {
+    return `stopReason=${stopReason}`;
+  }
+  if (errorMessage) {
+    return `error=${errorMessage}`;
+  }
+  return null;
 }
 
 function buildThreadTitleUserMessage(params: {

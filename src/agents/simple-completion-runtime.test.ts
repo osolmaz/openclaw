@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { OpenClawConfig } from "../config/config.js";
 
 const hoisted = vi.hoisted(() => ({
   resolveModelMock: vi.fn(),
@@ -6,6 +7,11 @@ const hoisted = vi.hoisted(() => ({
   applyLocalNoAuthHeaderOverrideMock: vi.fn(),
   setRuntimeApiKeyMock: vi.fn(),
   resolveCopilotApiTokenMock: vi.fn(),
+  completeMock: vi.fn(),
+}));
+
+vi.mock("@mariozechner/pi-ai", () => ({
+  complete: hoisted.completeMock,
 }));
 
 vi.mock("./pi-embedded-runner/model.js", () => ({
@@ -22,6 +28,17 @@ vi.mock("./github-copilot-token.js", () => ({
 }));
 
 let prepareSimpleCompletionModel: typeof import("./simple-completion-runtime.js").prepareSimpleCompletionModel;
+let runSimpleCompletionForAgent: typeof import("./simple-completion-runtime.js").runSimpleCompletionForAgent;
+
+function cfgWithDefaultModel(model: string): OpenClawConfig {
+  return {
+    agents: {
+      defaults: {
+        model,
+      },
+    },
+  } as OpenClawConfig;
+}
 
 beforeEach(async () => {
   vi.resetModules();
@@ -30,6 +47,7 @@ beforeEach(async () => {
   hoisted.applyLocalNoAuthHeaderOverrideMock.mockReset();
   hoisted.setRuntimeApiKeyMock.mockReset();
   hoisted.resolveCopilotApiTokenMock.mockReset();
+  hoisted.completeMock.mockReset();
 
   hoisted.applyLocalNoAuthHeaderOverrideMock.mockImplementation((model: unknown) => model);
 
@@ -54,7 +72,12 @@ beforeEach(async () => {
     source: "cache:/tmp/copilot-token.json",
     baseUrl: "https://api.individual.githubcopilot.com",
   });
-  ({ prepareSimpleCompletionModel } = await import("./simple-completion-runtime.js"));
+  hoisted.completeMock.mockResolvedValue({
+    role: "assistant",
+    content: [{ type: "text", text: "ok" }],
+  });
+  ({ prepareSimpleCompletionModel, runSimpleCompletionForAgent } =
+    await import("./simple-completion-runtime.js"));
 });
 
 describe("prepareSimpleCompletionModel", () => {
@@ -337,5 +360,119 @@ describe("prepareSimpleCompletionModel", () => {
         }),
       }),
     );
+  });
+});
+
+describe("runSimpleCompletionForAgent", () => {
+  it("strips temperature for codex one-shot completions", async () => {
+    hoisted.resolveModelMock.mockReturnValueOnce({
+      model: {
+        provider: "openai-codex",
+        id: "gpt-5.4",
+        api: "openai-codex-responses",
+      },
+      authStorage: {
+        setRuntimeApiKey: hoisted.setRuntimeApiKeyMock,
+      },
+      modelRegistry: {},
+    });
+
+    const result = await runSimpleCompletionForAgent({
+      cfg: cfgWithDefaultModel("openai-codex/gpt-5.4"),
+      agentId: "main",
+      context: {
+        systemPrompt: "Generate a title.",
+        messages: [],
+      },
+      options: {
+        maxTokens: 24,
+        temperature: 0.2,
+      },
+    });
+
+    expect(result).not.toHaveProperty("error");
+    expect(hoisted.completeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "openai-codex",
+        id: "gpt-5.4",
+        api: "openai-codex-responses",
+      }),
+      expect.objectContaining({
+        systemPrompt: "Generate a title.",
+      }),
+      expect.objectContaining({
+        apiKey: "sk-test",
+        maxTokens: 24,
+      }),
+    );
+    expect(hoisted.completeMock.mock.calls[0]?.[2]).not.toHaveProperty("temperature");
+  });
+
+  it("preserves temperature for non-codex one-shot completions", async () => {
+    hoisted.resolveModelMock.mockReturnValueOnce({
+      model: {
+        provider: "anthropic",
+        id: "claude-opus-4-6",
+        api: "anthropic-messages",
+      },
+      authStorage: {
+        setRuntimeApiKey: hoisted.setRuntimeApiKeyMock,
+      },
+      modelRegistry: {},
+    });
+
+    await runSimpleCompletionForAgent({
+      cfg: cfgWithDefaultModel("anthropic/claude-opus-4-6"),
+      agentId: "main",
+      context: {
+        systemPrompt: "Generate a title.",
+        messages: [],
+      },
+      options: {
+        maxTokens: 24,
+        temperature: 0.2,
+      },
+    });
+
+    expect(hoisted.completeMock.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        apiKey: "sk-test",
+        maxTokens: 24,
+        temperature: 0.2,
+      }),
+    );
+  });
+
+  it("returns the selection when execution throws", async () => {
+    hoisted.resolveModelMock.mockReturnValueOnce({
+      model: {
+        provider: "anthropic",
+        id: "claude-opus-4-6",
+        api: "anthropic-messages",
+      },
+      authStorage: {
+        setRuntimeApiKey: hoisted.setRuntimeApiKeyMock,
+      },
+      modelRegistry: {},
+    });
+    hoisted.completeMock.mockRejectedValueOnce(new Error("network timeout"));
+
+    const result = await runSimpleCompletionForAgent({
+      cfg: cfgWithDefaultModel("anthropic/claude-opus-4-6"),
+      agentId: "main",
+      context: {
+        systemPrompt: "Generate a title.",
+        messages: [],
+      },
+    });
+
+    expect(result).toEqual({
+      error: "network timeout",
+      selection: {
+        provider: "anthropic",
+        modelId: "claude-opus-4-6",
+        agentDir: expect.any(String),
+      },
+    });
   });
 });
