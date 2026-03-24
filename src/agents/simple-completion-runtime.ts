@@ -1,4 +1,4 @@
-import { complete, type Api, type Model } from "@mariozechner/pi-ai";
+import type { Api, Model } from "@mariozechner/pi-ai";
 import type { OpenClawConfig } from "../config/config.js";
 import { resolveAgentDir, resolveAgentEffectiveModelPrimary } from "./agent-scope.js";
 import { DEFAULT_PROVIDER } from "./defaults.js";
@@ -14,6 +14,7 @@ import {
   resolveModelRefFromString,
 } from "./model-selection.js";
 import { resolveModel } from "./pi-embedded-runner/model.js";
+import { prepareModelForSimpleCompletion } from "./simple-completion-transport.js";
 
 type SimpleCompletionAuthStorage = {
   setRuntimeApiKey: (provider: string, apiKey: string) => void;
@@ -55,14 +56,15 @@ export type PreparedSimpleCompletionModelForAgent =
       auth?: ResolvedProviderAuth;
     };
 
-type SimpleCompletionContext = Parameters<typeof complete>[1];
-type SimpleCompletionOptions = NonNullable<Parameters<typeof complete>[2]>;
+type CompleteFn = typeof import("@mariozechner/pi-ai")["complete"];
+type SimpleCompletionContext = Parameters<CompleteFn>[1];
+type SimpleCompletionOptions = NonNullable<Parameters<CompleteFn>[2]>;
 type SimpleCompletionOptionsInput = Omit<SimpleCompletionOptions, "apiKey">;
 
 export type SimpleCompletionRunResult =
   | {
       selection: AgentSimpleCompletionSelection;
-      response: Awaited<ReturnType<typeof complete>>;
+      response: Awaited<ReturnType<CompleteFn>>;
     }
   | {
       error: string;
@@ -261,6 +263,13 @@ function normalizeSimpleCompletionOptions(params: {
   return next;
 }
 
+let piAiCompletePromise: Promise<CompleteFn> | null = null;
+
+async function loadPiAiComplete(): Promise<CompleteFn> {
+  piAiCompletePromise ??= import("@mariozechner/pi-ai").then((mod) => mod.complete);
+  return await piAiCompletePromise;
+}
+
 export async function runSimpleCompletionForAgent(params: {
   cfg: OpenClawConfig;
   agentId: string;
@@ -286,11 +295,16 @@ export async function runSimpleCompletionForAgent(params: {
     };
   }
   try {
+    const runtimeModel = prepareModelForSimpleCompletion({
+      model: prepared.model,
+      cfg: params.cfg,
+    });
+    const complete = await loadPiAiComplete();
     const response = await complete(
-      prepared.model,
+      runtimeModel,
       params.context,
       normalizeSimpleCompletionOptions({
-        model: prepared.model,
+        model: runtimeModel,
         options: {
           ...params.options,
           apiKey: prepared.auth.apiKey,
