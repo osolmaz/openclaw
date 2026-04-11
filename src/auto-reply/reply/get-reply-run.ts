@@ -304,17 +304,23 @@ export async function runPreparedReply(
     ((baseBodyTrimmedRaw.length === 0 && rawBodyTrimmed.length > 0) || isBareNewOrReset);
   const baseBodyFinal = isBareSessionReset ? buildBareSessionResetPrompt(cfg) : baseBody;
   const envelopeOptions = resolveEnvelopeFormatOptions(cfg);
-  const inboundUserContext = buildInboundUserContextPrefix(
-    isNewSession
-      ? {
-          ...sessionCtx,
-          ...(normalizeOptionalString(sessionCtx.ThreadHistoryBody)
-            ? { InboundHistory: undefined, ThreadStarterBody: undefined }
-            : {}),
-        }
-      : { ...sessionCtx, ThreadStarterBody: undefined },
-    envelopeOptions,
-  );
+  const useLeanInboundEnvelopeForGemma =
+    provider === "vllm/gemma4-26b" ||
+    model === "gemma4-26b" ||
+    model === "google/gemma-4-26B-A4B-it";
+  const inboundUserContext = useLeanInboundEnvelopeForGemma
+    ? ""
+    : buildInboundUserContextPrefix(
+        isNewSession
+          ? {
+              ...sessionCtx,
+              ...(normalizeOptionalString(sessionCtx.ThreadHistoryBody)
+                ? { InboundHistory: undefined, ThreadStarterBody: undefined }
+                : {}),
+            }
+          : { ...sessionCtx, ThreadStarterBody: undefined },
+        envelopeOptions,
+      );
   const baseBodyForPrompt = isBareSessionReset
     ? baseBodyFinal
     : [inboundUserContext, baseBodyFinal].filter(Boolean).join("\n\n");
@@ -388,6 +394,7 @@ export async function runPreparedReply(
       prefixedBody: prefixedBodyCore,
       threadContextNote,
       systemEventBlocks: drainedSystemEventBlocks,
+      skipUntrustedContextAppend: useLeanInboundEnvelopeForGemma,
     });
   };
   const skillResult =

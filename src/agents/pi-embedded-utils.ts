@@ -34,9 +34,19 @@ function sanitizeAssistantText(text: string): string {
   return sanitizeAssistantVisibleText(text);
 }
 
+function stripStandaloneThoughtPrelude(text: string): string {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const match = normalized.match(/^\s*(thought|thinking)\s*\n+([\s\S]+)$/);
+  if (!match) {
+    return text;
+  }
+  const remainder = match[2]?.trim();
+  return remainder ? remainder : text;
+}
+
 function finalizeAssistantExtraction(msg: AssistantMessage, extracted: string): string {
   const errorContext = msg.stopReason === "error";
-  return sanitizeUserFacingText(extracted, { errorContext });
+  return sanitizeUserFacingText(stripStandaloneThoughtPrelude(extracted), { errorContext });
 }
 
 type AssistantTextExtractionResult = {

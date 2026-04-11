@@ -12,6 +12,7 @@ import type { AgentInternalEvent } from "../../internal-events.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
 import type { SkillSnapshot } from "../../skills.js";
+import type { PromptMode } from "../../system-prompt.js";
 export type { ClientToolDefinition } from "../../command/shared-types.js";
 
 export type EmbeddedRunTrigger = "cron" | "heartbeat" | "manual" | "memory" | "overflow" | "user";
@@ -121,6 +122,8 @@ export type RunEmbeddedPiAgentParams = {
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
   silentExpected?: boolean;
+  /** Optional override for the embedded system prompt shape. */
+  promptMode?: PromptMode;
   /**
    * Allow a single run attempt even when all auth profiles are in cooldown,
    * but only for inferred transient cooldowns like `rate_limit` or `overloaded`.

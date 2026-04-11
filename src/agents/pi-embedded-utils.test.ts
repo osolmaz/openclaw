@@ -590,6 +590,11 @@ File contents here`,
         expected: "Final response.",
       },
       {
+        name: "standalone thought prelude",
+        text: "thought\nok",
+        expected: "ok",
+      },
+      {
         name: "multiple think blocks",
         text: "Start<think>first thought</think>Middle<think>second thought</think>End",
         expected: "StartMiddleEnd",

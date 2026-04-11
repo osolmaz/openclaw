@@ -7,6 +7,10 @@ import "./get-reply.test-runtime-mocks.js";
 const mocks = vi.hoisted(() => ({
   resolveReplyDirectives: vi.fn(),
   initSessionState: vi.fn(),
+  resolveChannelModelOverride: vi.fn(() => undefined),
+}));
+vi.mock("../../channels/model-overrides.js", () => ({
+  resolveChannelModelOverride: (...args: unknown[]) => mocks.resolveChannelModelOverride(...args),
 }));
 vi.mock("./directive-handling.defaults.js", () => ({
   resolveDefaultModel: vi.fn(() => ({
@@ -56,10 +60,12 @@ describe("getReplyFromConfig configOverride", () => {
     vi.stubEnv("OPENCLAW_ALLOW_SLOW_REPLY_TESTS", "1");
     mocks.resolveReplyDirectives.mockReset();
     mocks.initSessionState.mockReset();
+    mocks.resolveChannelModelOverride.mockReset();
     vi.mocked(loadConfigMock).mockReset();
 
     vi.mocked(loadConfigMock).mockReturnValue({});
     mocks.resolveReplyDirectives.mockResolvedValue({ kind: "reply", reply: { text: "ok" } });
+    mocks.resolveChannelModelOverride.mockReturnValue(undefined);
     mocks.initSessionState.mockResolvedValue({
       sessionCtx: {},
       sessionEntry: {},
@@ -122,5 +128,88 @@ describe("getReplyFromConfig configOverride", () => {
         }),
       }),
     );
+  });
+
+  it("preserves a user model override even when the channel is pinned", async () => {
+    const sessionEntry = {
+      channel: "discord",
+      chatType: "channel",
+      groupId: "1492296441803182130",
+      providerOverride: "openai-codex",
+      modelOverride: "gpt-5.4",
+      modelOverrideSource: "user",
+      authProfileOverride: "openai-codex:default",
+      authProfileOverrideSource: "user",
+    };
+    mocks.initSessionState.mockResolvedValue({
+      sessionCtx: {},
+      sessionEntry,
+      previousSessionEntry: {},
+      sessionStore: {
+        "agent:main:discord:channel:1492296441803182130": sessionEntry,
+      },
+      sessionKey: "agent:main:discord:channel:1492296441803182130",
+      sessionId: "session-1",
+      isNewSession: false,
+      resetTriggered: false,
+      systemSent: false,
+      abortedLastRun: false,
+      storePath: undefined,
+      sessionScope: "per-chat",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "",
+      bodyStripped: "",
+    });
+    mocks.resolveChannelModelOverride.mockReturnValue({
+      channel: "discord",
+      model: "vllm/gemma4-26b",
+    });
+    mocks.initSessionState.mockResolvedValue({
+      sessionCtx: {},
+      sessionEntry,
+      previousSessionEntry: {},
+      sessionStore: {
+        "agent:main:discord:channel:1492296441803182130": sessionEntry,
+      },
+      sessionKey: "agent:main:discord:channel:1492296441803182130",
+      sessionId: "session-1",
+      isNewSession: false,
+      resetTriggered: false,
+      systemSent: false,
+      abortedLastRun: false,
+      storePath: undefined,
+      sessionScope: "per-chat",
+      groupResolution: undefined,
+      isGroup: false,
+      triggerBodyNormalized: "",
+      bodyStripped: "",
+    });
+    vi.mocked(loadConfigMock).mockReturnValue({
+      channels: {
+        modelByChannel: {
+          discord: {
+            "1492296441803182130": "vllm/gemma4-26b",
+          },
+        },
+      },
+    } satisfies OpenClawConfig);
+
+    await getReplyFromConfig(
+      buildCtx({
+        Provider: "discord",
+        Surface: "discord",
+        ChatType: "channel",
+        SessionKey: "agent:main:discord:channel:1492296441803182130",
+        To: "channel:1492296441803182130",
+      }),
+      undefined,
+      undefined,
+    );
+
+    expect(mocks.resolveReplyDirectives).toHaveBeenCalledOnce();
+    expect(sessionEntry.providerOverride).toBe("openai-codex");
+    expect(sessionEntry.modelOverride).toBe("gpt-5.4");
+    expect(sessionEntry.authProfileOverride).toBe("openai-codex:default");
   });
 });

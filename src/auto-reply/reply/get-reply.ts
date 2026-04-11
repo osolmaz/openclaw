@@ -11,6 +11,7 @@ import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/
 import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import { type OpenClawConfig, loadConfig } from "../../config/config.js";
 import { defaultRuntime } from "../../runtime.js";
+import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { normalizeStringEntries } from "../../shared/string-normalization.js";
 import type { MsgContext } from "../templating.js";
@@ -45,6 +46,9 @@ let sessionResetModelRuntimePromise: Promise<
 let stageSandboxMediaRuntimePromise: Promise<
   typeof import("./stage-sandbox-media.runtime.js")
 > | null = null;
+let sessionStoreRuntimePromise: Promise<
+  typeof import("../../config/sessions/store.runtime.js")
+> | null = null;
 
 function loadSessionResetModelRuntime() {
   sessionResetModelRuntimePromise ??= import("./session-reset-model.runtime.js");
@@ -54,6 +58,11 @@ function loadSessionResetModelRuntime() {
 function loadStageSandboxMediaRuntime() {
   stageSandboxMediaRuntimePromise ??= import("./stage-sandbox-media.runtime.js");
   return stageSandboxMediaRuntimePromise;
+}
+
+function loadSessionStoreRuntime() {
+  sessionStoreRuntimePromise ??= import("../../config/sessions/store.runtime.js");
+  return sessionStoreRuntimePromise;
 }
 
 let hookRunnerGlobalPromise: Promise<typeof import("../../plugins/hook-runner-global.js")> | null =
@@ -319,15 +328,53 @@ export async function getReplyFromConfig(
     normalizeOptionalString(sessionEntry.modelOverride) ||
     normalizeOptionalString(sessionEntry.providerOverride),
   );
-  if (!hasResolvedHeartbeatModelOverride && !hasSessionModelOverride && channelModelOverride) {
-    const resolved = resolveModelRefFromString({
-      raw: channelModelOverride.model,
-      defaultProvider,
-      aliasIndex,
-    });
-    if (resolved) {
-      provider = resolved.ref.provider;
-      model = resolved.ref.model;
+  const hasUserSessionModelOverride =
+    sessionEntry.modelOverrideSource === "user" ||
+    (sessionEntry.modelOverrideSource === undefined && hasSessionModelOverride);
+  const hasAutoSessionModelOverride = hasSessionModelOverride && !hasUserSessionModelOverride;
+  if (!hasResolvedHeartbeatModelOverride && channelModelOverride) {
+    if (hasAutoSessionModelOverride && sessionEntry && sessionStore && sessionKey) {
+      const { updated } = applyModelOverrideToSessionEntry({
+        entry: sessionEntry,
+        selection: {
+          provider: defaultProvider,
+          model: defaultModel,
+          isDefault: true,
+        },
+      });
+      if (updated) {
+        sessionStore[sessionKey] = sessionEntry;
+        if (storePath) {
+          await (
+            await loadSessionStoreRuntime()
+          ).updateSessionStore(storePath, (store) => {
+            const persistedEntry = store[sessionKey];
+            if (!persistedEntry) {
+              return;
+            }
+            applyModelOverrideToSessionEntry({
+              entry: persistedEntry,
+              selection: {
+                provider: defaultProvider,
+                model: defaultModel,
+                isDefault: true,
+              },
+            });
+            store[sessionKey] = persistedEntry;
+          });
+        }
+      }
+    }
+    if (!hasUserSessionModelOverride) {
+      const resolved = resolveModelRefFromString({
+        raw: channelModelOverride.model,
+        defaultProvider,
+        aliasIndex,
+      });
+      if (resolved) {
+        provider = resolved.ref.provider;
+        model = resolved.ref.model;
+      }
     }
   }
 

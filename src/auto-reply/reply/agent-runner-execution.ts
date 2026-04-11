@@ -27,6 +27,7 @@ import {
 } from "../../agents/pi-embedded-helpers.js";
 import { isLikelyExecutionAckPrompt } from "../../agents/pi-embedded-runner/run/incomplete-turn.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { resolveChannelModelOverride } from "../../channels/model-overrides.js";
 import {
   resolveGroupSessionKey,
   resolveSessionTranscriptPath,
@@ -84,6 +85,10 @@ const GPT_CHAT_BREVITY_ACK_MAX_CHARS = 420;
 const GPT_CHAT_BREVITY_ACK_MAX_SENTENCES = 3;
 const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
+
+function shouldUseMinimalPromptForGemma(provider: string, model: string): boolean {
+  return provider === "vllm" && (model === "gemma4-26b" || model === "google/gemma-4-26B-A4B-it");
+}
 
 export type RuntimeFallbackAttempt = {
   provider: string;
@@ -248,6 +253,29 @@ function applyFallbackSelectionState(
     entry.updatedAt = now;
   }
   return updated;
+}
+
+function hasPinnedChannelModelOverride(params: {
+  cfg: FollowupRun["run"]["config"];
+  sessionCtx: TemplateContext;
+  sessionEntry?: SessionEntry;
+  messageProvider?: string;
+}): boolean {
+  const channelOverride = resolveChannelModelOverride({
+    cfg: params.cfg,
+    channel:
+      params.sessionEntry?.channel ??
+      params.sessionEntry?.origin?.provider ??
+      normalizeOptionalString(params.sessionCtx.OriginatingChannel) ??
+      params.messageProvider ??
+      params.sessionCtx.Provider,
+    groupId: params.sessionEntry?.groupId ?? resolveGroupSessionKey(params.sessionCtx)?.id,
+    groupChatType: params.sessionEntry?.chatType ?? params.sessionCtx.ChatType,
+    groupChannel: params.sessionEntry?.groupChannel ?? params.sessionCtx.GroupChannel,
+    groupSubject: params.sessionEntry?.subject ?? params.sessionCtx.GroupSubject,
+    parentSessionKey: params.sessionCtx.ParentSessionKey,
+  });
+  return Boolean(channelOverride);
 }
 
 function rollbackFallbackSelectionStateIfUnchanged(
@@ -647,6 +675,17 @@ export async function runAgentTurnWithFallback(params: {
       return undefined;
     }
 
+    if (
+      hasPinnedChannelModelOverride({
+        cfg: runtimeConfig,
+        sessionCtx: params.sessionCtx,
+        sessionEntry: activeSessionEntry,
+        messageProvider: params.followupRun.run.messageProvider,
+      })
+    ) {
+      return undefined;
+    }
+
     // Don't overwrite a user-initiated model override (e.g. from /models or
     // /model) with the fallback model.  The user's explicit selection should
     // survive transient primary-model failures so subsequent messages still
@@ -970,6 +1009,7 @@ export async function runAgentTurnWithFallback(params: {
                 ...senderContext,
                 ...runBaseParams,
                 prompt: params.commandBody,
+                promptMode: shouldUseMinimalPromptForGemma(provider, model) ? "minimal" : undefined,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(
