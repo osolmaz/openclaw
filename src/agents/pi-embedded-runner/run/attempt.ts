@@ -471,86 +471,79 @@ export async function runEmbeddedAttempt(
     let yieldAbortSettled: Promise<void> | null = null;
     // Check if the model supports native image input
     const modelHasVision = params.model.input?.includes("image") ?? false;
-    const promptMode = params.promptMode ?? resolvePromptModeForSession(params.sessionKey);
+    const promptMode = resolvePromptModeForSession(params.sessionKey);
 
     // When toolsAllow is set, use minimal prompt and strip skills catalog.
-    // Gemma 4 on vLLM also needs a genuinely compact, tool-free prompt to
-    // avoid malformed or stalled generations on short Discord turns.
     const effectivePromptMode = params.toolsAllow?.length ? ("minimal" as const) : promptMode;
-    const useCompactGemmaPrompt =
-      effectivePromptMode === "minimal" &&
-      params.provider === "vllm" &&
-      (params.modelId === "gemma4-26b" || params.modelId === "google/gemma-4-26B-A4B-it");
 
-    const toolsRaw =
-      params.disableTools || useCompactGemmaPrompt
-        ? []
-        : (() => {
-            const allTools = createOpenClawCodingTools({
-              agentId: sessionAgentId,
-              ...buildEmbeddedAttemptToolRunContext(params),
-              exec: {
-                ...params.execOverrides,
-                elevated: params.bashElevated,
-              },
+    const toolsRaw = params.disableTools
+      ? []
+      : (() => {
+          const allTools = createOpenClawCodingTools({
+            agentId: sessionAgentId,
+            ...buildEmbeddedAttemptToolRunContext(params),
+            exec: {
+              ...params.execOverrides,
+              elevated: params.bashElevated,
+            },
+            sandbox,
+            messageProvider: params.messageChannel ?? params.messageProvider,
+            agentAccountId: params.agentAccountId,
+            messageTo: params.messageTo,
+            messageThreadId: params.messageThreadId,
+            groupId: params.groupId,
+            groupChannel: params.groupChannel,
+            groupSpace: params.groupSpace,
+            spawnedBy: params.spawnedBy,
+            senderId: params.senderId,
+            senderName: params.senderName,
+            senderUsername: params.senderUsername,
+            senderE164: params.senderE164,
+            senderIsOwner: params.senderIsOwner,
+            allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+            sessionKey: sandboxSessionKey,
+            sessionId: params.sessionId,
+            runId: params.runId,
+            agentDir,
+            workspaceDir: effectiveWorkspace,
+            // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
+            // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
+            spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
               sandbox,
-              messageProvider: params.messageChannel ?? params.messageProvider,
-              agentAccountId: params.agentAccountId,
-              messageTo: params.messageTo,
-              messageThreadId: params.messageThreadId,
-              groupId: params.groupId,
-              groupChannel: params.groupChannel,
-              groupSpace: params.groupSpace,
-              spawnedBy: params.spawnedBy,
-              senderId: params.senderId,
-              senderName: params.senderName,
-              senderUsername: params.senderUsername,
-              senderE164: params.senderE164,
-              senderIsOwner: params.senderIsOwner,
-              allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
-              sessionKey: sandboxSessionKey,
-              sessionId: params.sessionId,
-              runId: params.runId,
-              agentDir,
-              workspaceDir: effectiveWorkspace,
-              // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
-              // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
-              spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
-                sandbox,
-                resolvedWorkspace,
-              }),
-              config: params.config,
-              abortSignal: runAbortController.signal,
-              modelProvider: params.model.provider,
-              modelId: params.modelId,
-              modelCompat: params.model.compat,
-              modelApi: params.model.api,
-              modelContextWindowTokens: params.model.contextWindow,
-              modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
-              currentChannelId: params.currentChannelId,
-              currentThreadTs: params.currentThreadTs,
-              currentMessageId: params.currentMessageId,
-              replyToMode: params.replyToMode,
-              hasRepliedRef: params.hasRepliedRef,
-              modelHasVision,
-              requireExplicitMessageTarget:
-                params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
-              disableMessageTool: params.disableMessageTool,
-              onYield: (message) => {
-                yieldDetected = true;
-                yieldMessage = message;
-                queueYieldInterruptForSession?.();
-                runAbortController.abort("sessions_yield");
-                abortSessionForYield?.();
-              },
-            });
-            if (params.toolsAllow && params.toolsAllow.length > 0) {
-              const allowSet = new Set(params.toolsAllow);
-              return allTools.filter((tool) => allowSet.has(tool.name));
-            }
-            return allTools;
-          })();
-    const toolsEnabled = supportsModelTools(params.model) && !useCompactGemmaPrompt;
+              resolvedWorkspace,
+            }),
+            config: params.config,
+            abortSignal: runAbortController.signal,
+            modelProvider: params.model.provider,
+            modelId: params.modelId,
+            modelCompat: params.model.compat,
+            modelApi: params.model.api,
+            modelContextWindowTokens: params.model.contextWindow,
+            modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
+            currentChannelId: params.currentChannelId,
+            currentThreadTs: params.currentThreadTs,
+            currentMessageId: params.currentMessageId,
+            replyToMode: params.replyToMode,
+            hasRepliedRef: params.hasRepliedRef,
+            modelHasVision,
+            requireExplicitMessageTarget:
+              params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
+            disableMessageTool: params.disableMessageTool,
+            onYield: (message) => {
+              yieldDetected = true;
+              yieldMessage = message;
+              queueYieldInterruptForSession?.();
+              runAbortController.abort("sessions_yield");
+              abortSessionForYield?.();
+            },
+          });
+          if (params.toolsAllow && params.toolsAllow.length > 0) {
+            const allowSet = new Set(params.toolsAllow);
+            return allTools.filter((tool) => allowSet.has(tool.name));
+          }
+          return allTools;
+        })();
+    const toolsEnabled = supportsModelTools(params.model);
     const tools = normalizeProviderToolSchemas({
       tools: toolsEnabled ? toolsRaw : [],
       provider: params.provider,
@@ -708,13 +701,7 @@ export async function runEmbeddedAttempt(
       },
     });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
-    const effectiveSkillsPrompt =
-      params.toolsAllow?.length || useCompactGemmaPrompt ? undefined : skillsPrompt;
-    const effectiveContextFiles = useCompactGemmaPrompt ? [] : contextFiles;
-    const effectiveWorkspaceNotes = useCompactGemmaPrompt ? [] : workspaceNotes;
-    const effectiveModelAliasLines = useCompactGemmaPrompt
-      ? []
-      : buildModelAliasLines(params.config);
+    const effectiveSkillsPrompt = params.toolsAllow?.length ? undefined : skillsPrompt;
     const docsPath = await resolveOpenClawDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
@@ -753,50 +740,41 @@ export async function runEmbeddedAttempt(
       },
     });
 
-    const compactGemmaSystemPrompt = [
-      "You are Gemma running inside OpenClaw.",
-      "Reply to the user's latest message directly in plain text.",
-      "Do not output tool calls, XML tags, reasoning markers, or code fences unless the user explicitly asks for them.",
-    ].join("\n");
     const builtAppendPrompt =
       resolveSystemPromptOverride({
         config: params.config,
         agentId: sessionAgentId,
       }) ??
-      (useCompactGemmaPrompt
-        ? compactGemmaSystemPrompt
-        : buildEmbeddedSystemPrompt({
-            workspaceDir: effectiveWorkspace,
-            defaultThinkLevel: params.thinkLevel,
-            reasoningLevel: params.reasoningLevel ?? "off",
-            extraSystemPrompt: params.extraSystemPrompt,
-            ownerNumbers: params.ownerNumbers,
-            ownerDisplay: ownerDisplay.ownerDisplay,
-            ownerDisplaySecret: ownerDisplay.ownerDisplaySecret,
-            reasoningTagHint,
-            heartbeatPrompt: useCompactGemmaPrompt ? undefined : heartbeatPrompt,
-            skillsPrompt: effectiveSkillsPrompt,
-            docsPath: docsPath ?? undefined,
-            ttsHint,
-            workspaceNotes: effectiveWorkspaceNotes,
-            reactionGuidance,
-            promptMode: effectivePromptMode,
-            acpEnabled: params.config?.acp?.enabled !== false,
-            runtimeInfo,
-            messageToolHints,
-            sandboxInfo,
-            tools: effectiveTools,
-            modelAliasLines: effectiveModelAliasLines,
-            userTimezone,
-            userTime,
-            userTimeFormat,
-            contextFiles: effectiveContextFiles,
-            includeMemorySection:
-              !useCompactGemmaPrompt &&
-              (!params.contextEngine || params.contextEngine.info.id === "legacy"),
-            memoryCitationsMode: params.config?.memory?.citations,
-            promptContribution,
-          }));
+      buildEmbeddedSystemPrompt({
+        workspaceDir: effectiveWorkspace,
+        defaultThinkLevel: params.thinkLevel,
+        reasoningLevel: params.reasoningLevel ?? "off",
+        extraSystemPrompt: params.extraSystemPrompt,
+        ownerNumbers: params.ownerNumbers,
+        ownerDisplay: ownerDisplay.ownerDisplay,
+        ownerDisplaySecret: ownerDisplay.ownerDisplaySecret,
+        reasoningTagHint,
+        heartbeatPrompt,
+        skillsPrompt: effectiveSkillsPrompt,
+        docsPath: docsPath ?? undefined,
+        ttsHint,
+        workspaceNotes,
+        reactionGuidance,
+        promptMode: effectivePromptMode,
+        acpEnabled: params.config?.acp?.enabled !== false,
+        runtimeInfo,
+        messageToolHints,
+        sandboxInfo,
+        tools: effectiveTools,
+        modelAliasLines: buildModelAliasLines(params.config),
+        userTimezone,
+        userTime,
+        userTimeFormat,
+        contextFiles,
+        includeMemorySection: !params.contextEngine || params.contextEngine.info.id === "legacy",
+        memoryCitationsMode: params.config?.memory?.citations,
+        promptContribution,
+      });
     const appendPrompt = transformProviderSystemPrompt({
       provider: params.provider,
       config: params.config,
@@ -837,8 +815,8 @@ export async function runEmbeddedAttempt(
         return { mode: runtime.mode, sandboxed: runtime.sandboxed };
       })(),
       systemPrompt: appendPrompt,
-      bootstrapFiles: useCompactGemmaPrompt ? [] : hookAdjustedBootstrapFiles,
-      injectedFiles: effectiveContextFiles,
+      bootstrapFiles: hookAdjustedBootstrapFiles,
+      injectedFiles: contextFiles,
       skillsPrompt: effectiveSkillsPrompt ?? "",
       tools: effectiveTools,
     });

@@ -1677,59 +1677,6 @@ describe("runAgentTurnWithFallback", () => {
     expect(sessionStore.main.authProfileOverride).toBeUndefined();
   });
 
-  it("uses a minimal embedded prompt for Gemma vLLM runs", async () => {
-    state.runWithModelFallbackMock.mockImplementation(
-      async (params: { run: (provider: string, model: string) => Promise<unknown> }) => ({
-        result: await params.run("vllm", "gemma4-26b"),
-        provider: "vllm",
-        model: "gemma4-26b",
-        attempts: [],
-      }),
-    );
-    state.runEmbeddedPiAgentMock.mockResolvedValue({
-      payloads: [{ text: "ok" }],
-      meta: {},
-    });
-
-    const followupRun = createFollowupRun();
-    followupRun.run.provider = "vllm";
-    followupRun.run.model = "gemma4-26b";
-
-    const runAgentTurnWithFallback = await getRunAgentTurnWithFallback();
-    const result = await runAgentTurnWithFallback({
-      commandBody: "reply with exactly ok",
-      followupRun,
-      sessionCtx: {
-        Provider: "discord",
-        MessageSid: "msg",
-      } as unknown as TemplateContext,
-      opts: {},
-      typingSignals: createMockTypingSignaler(),
-      blockReplyPipeline: null,
-      blockStreamingEnabled: false,
-      resolvedBlockStreamingBreak: "message_end",
-      applyReplyToMode: (payload) => payload,
-      shouldEmitToolResult: () => true,
-      shouldEmitToolOutput: () => false,
-      pendingToolTasks: new Set(),
-      resetSessionAfterCompactionFailure: async () => false,
-      resetSessionAfterRoleOrderingConflict: async () => false,
-      isHeartbeat: false,
-      sessionKey: "main",
-      getActiveSessionEntry: () => ({ sessionId: "session", updatedAt: Date.now() }),
-      activeSessionStore: {},
-      resolvedVerboseLevel: "off",
-    });
-
-    expect(result.kind).toBe("success");
-    expect(state.runEmbeddedPiAgentMock).toHaveBeenCalledTimes(1);
-    expect(state.runEmbeddedPiAgentMock.mock.calls[0]?.[0]).toMatchObject({
-      provider: "vllm",
-      model: "gemma4-26b",
-      promptMode: "minimal",
-    });
-  });
-
   it("does not persist fallback selection when the session model is pinned by channel config", async () => {
     state.runWithModelFallbackMock.mockImplementation(
       async (params: { run: (provider: string, model: string) => Promise<unknown> }) => ({

@@ -86,10 +86,6 @@ const GPT_CHAT_BREVITY_ACK_MAX_SENTENCES = 3;
 const GPT_CHAT_BREVITY_SOFT_MAX_CHARS = 900;
 const GPT_CHAT_BREVITY_SOFT_MAX_SENTENCES = 6;
 
-function shouldUseMinimalPromptForGemma(provider: string, model: string): boolean {
-  return provider === "vllm" && (model === "gemma4-26b" || model === "google/gemma-4-26B-A4B-it");
-}
-
 export type RuntimeFallbackAttempt = {
   provider: string;
   model: string;
@@ -1009,7 +1005,6 @@ export async function runAgentTurnWithFallback(params: {
                 ...senderContext,
                 ...runBaseParams,
                 prompt: params.commandBody,
-                promptMode: shouldUseMinimalPromptForGemma(provider, model) ? "minimal" : undefined,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
                 toolResultFormat: (() => {
                   const channel = resolveMessageChannel(

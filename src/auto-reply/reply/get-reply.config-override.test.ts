@@ -7,10 +7,10 @@ import "./get-reply.test-runtime-mocks.js";
 const mocks = vi.hoisted(() => ({
   resolveReplyDirectives: vi.fn(),
   initSessionState: vi.fn(),
-  resolveChannelModelOverride: vi.fn(() => undefined),
+  resolveChannelModelOverride: vi.fn<(...args: unknown[]) => unknown>(() => undefined),
 }));
 vi.mock("../../channels/model-overrides.js", () => ({
-  resolveChannelModelOverride: (...args: unknown[]) => mocks.resolveChannelModelOverride(...args),
+  resolveChannelModelOverride: mocks.resolveChannelModelOverride,
 }));
 vi.mock("./directive-handling.defaults.js", () => ({
   resolveDefaultModel: vi.fn(() => ({

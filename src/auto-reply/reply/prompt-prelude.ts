@@ -12,7 +12,6 @@ export function buildReplyPromptBodies(params: {
   prefixedBody: string;
   threadContextNote?: string;
   systemEventBlocks?: string[];
-  skipUntrustedContextAppend?: boolean;
 }): {
   mediaNote?: string;
   mediaReplyHint?: string;
@@ -23,12 +22,10 @@ export function buildReplyPromptBodies(params: {
   const prependEvents = (body: string) =>
     combinedEventsBlock ? `${combinedEventsBlock}\n\n${body}` : body;
   const bodyWithEvents = prependEvents(params.effectiveBaseBody);
-  const prefixedBodyWithEvents = params.skipUntrustedContextAppend
-    ? prependEvents(params.prefixedBody)
-    : appendUntrustedContext(
-        prependEvents(params.prefixedBody),
-        params.sessionCtx.UntrustedContext,
-      );
+  const prefixedBodyWithEvents = appendUntrustedContext(
+    prependEvents(params.prefixedBody),
+    params.sessionCtx.UntrustedContext,
+  );
   const prefixedBody = [params.threadContextNote, prefixedBodyWithEvents]
     .filter(Boolean)
     .join("\n\n");
