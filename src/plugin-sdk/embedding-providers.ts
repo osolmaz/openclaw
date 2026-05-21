@@ -1,13 +1,15 @@
 export {
   clearEmbeddingProviders,
-  getEmbeddingProvider,
-  listEmbeddingProviders,
-  listRegisteredEmbeddingProviders,
   registerEmbeddingProvider,
   resetEmbeddingProviders,
   restoreEmbeddingProviders,
   restoreRegisteredEmbeddingProviders,
 } from "../plugins/embedding-providers.js";
+export {
+  getEmbeddingProvider,
+  listEmbeddingProviders,
+  listRegisteredEmbeddingProviders,
+} from "../plugins/embedding-provider-runtime.js";
 
 export type {
   EmbeddingInput,

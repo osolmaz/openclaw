@@ -2838,6 +2838,50 @@ module.exports = { id: "throws-after-import", register() {} };`,
     expect(getEmbeddingProvider("snapshot")).toBeUndefined();
   });
 
+  it("allows non-activating embedding provider snapshots to reuse active ids", () => {
+    useNoBundledPlugins();
+    registerEmbeddingProvider({
+      id: "shared",
+      create: async () => ({ provider: null }),
+    });
+    const plugin = writePlugin({
+      id: "snapshot-shared-embedding",
+      filename: "snapshot-shared-embedding.cjs",
+      body: `module.exports = {
+        id: "snapshot-shared-embedding",
+        register(api) {
+          api.registerEmbeddingProvider({
+            id: "shared",
+            create: async () => ({ provider: null }),
+          });
+        },
+      };`,
+    });
+    updatePluginManifest(plugin, {
+      contracts: { embeddingProviders: ["shared"] },
+    });
+
+    const scoped = loadOpenClawPlugins({
+      cache: false,
+      activate: false,
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["snapshot-shared-embedding"],
+        },
+      },
+      onlyPluginIds: ["snapshot-shared-embedding"],
+    });
+
+    expect(scoped.plugins.find((entry) => entry.id === "snapshot-shared-embedding")?.status).toBe(
+      "loaded",
+    );
+    expect(scoped.embeddingProviders.map((entry) => entry.provider.id)).toEqual(["shared"]);
+    expect(listEmbeddingProviders().map((adapter) => adapter.id)).toEqual(["shared"]);
+    expect(getEmbeddingProvider("shared")?.id).toBe("shared");
+  });
+
   it("clears newly-registered embedding providers when plugin register fails", () => {
     useNoBundledPlugins();
     const plugin = writePlugin({

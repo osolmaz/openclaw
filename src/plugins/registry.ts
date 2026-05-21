@@ -1138,9 +1138,18 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       });
       return;
     }
-    const existing = getRegisteredEmbeddingProvider(id);
+    const existing =
+      registryParams.activateGlobalSideEffects === false
+        ? registry.embeddingProviders.find((entry) => entry.provider.id === id)
+        : getRegisteredEmbeddingProvider(id);
     if (existing) {
-      const ownerDetail = existing.ownerPluginId ? ` (owner: ${existing.ownerPluginId})` : "";
+      const ownerPluginId =
+        "ownerPluginId" in existing
+          ? existing.ownerPluginId
+          : "pluginId" in existing
+            ? existing.pluginId
+            : undefined;
+      const ownerDetail = ownerPluginId ? ` (owner: ${ownerPluginId})` : "";
       pushDiagnostic({
         level: "error",
         pluginId: record.id,
@@ -1149,9 +1158,11 @@ export function createPluginRegistry(registryParams: PluginRegistryParams) {
       });
       return;
     }
-    registerEmbeddingProvider(adapter, {
-      ownerPluginId: record.id,
-    });
+    if (registryParams.activateGlobalSideEffects !== false) {
+      registerEmbeddingProvider(adapter, {
+        ownerPluginId: record.id,
+      });
+    }
     registry.embeddingProviders.push({
       pluginId: record.id,
       pluginName: record.name,
