@@ -55,6 +55,11 @@ import {
   type PluginCandidate,
   type PluginDiscoveryResult,
 } from "./discovery.js";
+import {
+  clearEmbeddingProviders,
+  listRegisteredEmbeddingProviders,
+  restoreRegisteredEmbeddingProviders,
+} from "./embedding-providers.js";
 import { shouldRejectHardlinkedPluginFiles } from "./hardlink-policy.js";
 import { getGlobalHookRunner, initializeGlobalHookRunner } from "./hook-runner-global.js";
 import { toSafeImportPath } from "./import-specifier.js";
@@ -267,6 +272,7 @@ type CachedPluginState = {
   memoryCorpusSupplements: ReturnType<typeof listMemoryCorpusSupplements>;
   agentHarnesses: ReturnType<typeof listRegisteredAgentHarnesses>;
   compactionProviders: ReturnType<typeof listRegisteredCompactionProviders>;
+  embeddingProviders: ReturnType<typeof listRegisteredEmbeddingProviders>;
   memoryEmbeddingProviders: ReturnType<typeof listRegisteredMemoryEmbeddingProviders>;
   memoryPromptSupplements: ReturnType<typeof listMemoryPromptSupplements>;
 };
@@ -321,6 +327,7 @@ export function clearActivatedPluginRuntimeState(): void {
   clearCompactionProviders();
   clearDetachedTaskLifecycleRuntimeRegistration();
   clearPluginInteractiveHandlers();
+  clearEmbeddingProviders();
   clearMemoryEmbeddingProviders();
   clearMemoryPluginState();
 }
@@ -351,6 +358,7 @@ type PluginRegistrySnapshot = {
     modelCatalogProviders: PluginRegistry["modelCatalogProviders"];
     cliBackends: NonNullable<PluginRegistry["cliBackends"]>;
     textTransforms: PluginRegistry["textTransforms"];
+    embeddingProviders: PluginRegistry["embeddingProviders"];
     speechProviders: PluginRegistry["speechProviders"];
     realtimeTranscriptionProviders: PluginRegistry["realtimeTranscriptionProviders"];
     realtimeVoiceProviders: PluginRegistry["realtimeVoiceProviders"];
@@ -394,6 +402,7 @@ function snapshotPluginRegistry(registry: PluginRegistry): PluginRegistrySnapsho
       modelCatalogProviders: [...registry.modelCatalogProviders],
       cliBackends: [...(registry.cliBackends ?? [])],
       textTransforms: [...registry.textTransforms],
+      embeddingProviders: [...registry.embeddingProviders],
       speechProviders: [...registry.speechProviders],
       realtimeTranscriptionProviders: [...registry.realtimeTranscriptionProviders],
       realtimeVoiceProviders: [...registry.realtimeVoiceProviders],
@@ -436,6 +445,7 @@ function restorePluginRegistry(registry: PluginRegistry, snapshot: PluginRegistr
   registry.modelCatalogProviders = snapshot.arrays.modelCatalogProviders;
   registry.cliBackends = snapshot.arrays.cliBackends;
   registry.textTransforms = snapshot.arrays.textTransforms;
+  registry.embeddingProviders = snapshot.arrays.embeddingProviders;
   registry.speechProviders = snapshot.arrays.speechProviders;
   registry.realtimeTranscriptionProviders = snapshot.arrays.realtimeTranscriptionProviders;
   registry.realtimeVoiceProviders = snapshot.arrays.realtimeVoiceProviders;
@@ -1562,6 +1572,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           cached.state.detachedTaskRuntimeRegistration,
         );
         restorePluginInteractiveHandlers(cached.state.interactiveHandlers ?? []);
+        restoreRegisteredEmbeddingProviders(cached.state.embeddingProviders);
         restoreRegisteredMemoryEmbeddingProviders(cached.state.memoryEmbeddingProviders);
         restoreMemoryPluginState({
           capability: cached.state.memoryCapability,
@@ -2521,6 +2532,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           registry,
           agentHarnesses: listRegisteredAgentHarnesses(),
           compactionProviders: listRegisteredCompactionProviders(),
+          embeddingProviders: listRegisteredEmbeddingProviders(),
           memoryEmbeddingProviders: listRegisteredMemoryEmbeddingProviders(),
           memoryPromptSupplements: listMemoryPromptSupplements(),
         },
