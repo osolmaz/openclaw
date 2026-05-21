@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { getCompactionProvider, registerCompactionProvider } from "./compaction-provider.js";
+import { getEmbeddingProvider, registerEmbeddingProvider } from "./embedding-providers.js";
 import {
   testing,
   clearPluginLoaderCache,
@@ -596,6 +597,10 @@ describe("resolveRuntimePluginRegistry", () => {
 
 describe("clearPluginLoaderCache", () => {
   it("resets registered memory plugin registries", () => {
+    registerEmbeddingProvider({
+      id: "stale-embedding",
+      create: async () => ({ provider: null }),
+    });
     registerMemoryEmbeddingProvider({
       id: "stale",
       create: async () => ({ provider: null }),
@@ -633,10 +638,12 @@ describe("clearPluginLoaderCache", () => {
     expect(
       requireMemoryRuntime().resolveMemoryBackendConfig({ cfg: {} as never, agentId: "main" }),
     ).toEqual({ backend: "builtin" });
+    expect(getEmbeddingProvider("stale-embedding")?.id).toBe("stale-embedding");
     expect(requireMemoryEmbeddingProvider("stale").id).toBe("stale");
 
     clearPluginLoaderCache();
 
+    expect(getEmbeddingProvider("stale-embedding")).toBeUndefined();
     expect(buildMemoryPromptSection({ availableTools: new Set() })).toStrictEqual([]);
     expect(listMemoryCorpusSupplements()).toStrictEqual([]);
     expect(resolveMemoryFlushPlan({})).toBeNull();
@@ -647,6 +654,10 @@ describe("clearPluginLoaderCache", () => {
 
 describe("loadOpenClawPlugins active runtime clearing", () => {
   it("clears plugin-owned global providers before activating a new registry", () => {
+    registerEmbeddingProvider({
+      id: "stale-embedding",
+      create: async () => ({ provider: null }),
+    });
     registerCompactionProvider({
       id: "stale-compaction",
       label: "Stale Compaction",
@@ -659,6 +670,7 @@ describe("loadOpenClawPlugins active runtime clearing", () => {
 
     loadOpenClawPlugins({ onlyPluginIds: [] });
 
+    expect(getEmbeddingProvider("stale-embedding")).toBeUndefined();
     expect(getCompactionProvider("stale-compaction")).toBeUndefined();
     expect(getMemoryEmbeddingProvider("stale-memory")).toBeUndefined();
   });
