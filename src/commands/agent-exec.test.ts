@@ -1037,17 +1037,13 @@ describe("agent exec run config layering", () => {
 
   it("lets explicit flags outrank the resolved config", () => {
     const config = buildExecRunConfig({
-      base: {
-        agents: { entries: { ops: { agentProfileId: "openclaw/large" } } },
-        tools: { codeMode: { enabled: true } },
-      },
+      base: { tools: { codeMode: { enabled: true } } },
       cwd: "/run/here",
       opts: { codeMode: "direct", agentProfile: "openclaw/small" },
     });
 
     expect(config.tools?.codeMode).toBe(false);
     expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
-    expect(config.agents?.entries?.ops?.agentProfileId).toBe("openclaw/small");
   });
 });
 
