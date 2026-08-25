@@ -24,6 +24,26 @@ const transformProviderSystemPrompt: Parameters<
 >[0]["transformProviderSystemPrompt"] = ({ context }) => context.systemPrompt;
 
 describe("buildAttemptSystemPrompt", () => {
+  it("uses a profile-owned base prompt before provider transformation", () => {
+    const transform = vi.fn(({ context }) => `provider:${context.systemPrompt}`);
+    const result = buildAttemptSystemPrompt({
+      isRawModelRun: false,
+      baseSystemPromptOverride: "small profile prompt",
+      transformProviderSystemPrompt: transform,
+      embeddedSystemPrompt: {
+        workspaceDir: "/tmp/openclaw",
+        reasoningTagHint: false,
+        contextFiles: [{ path: "/tmp/openclaw/AGENTS.md", content: "large workspace prompt" }],
+      },
+      providerTransform: baseProviderTransform,
+    });
+
+    expect(result.baseSystemPrompt).toBe("small profile prompt");
+    expect(result.systemPrompt).toBe("provider:small profile prompt");
+    expect(result.systemPrompt).not.toContain("large workspace prompt");
+    expect(transform).toHaveBeenCalledOnce();
+  });
+
   it("does not invoke ambient contributors during settled finalization", async () => {
     const getProviderRuntimeHandle = vi.fn();
     const markStage = vi.fn();

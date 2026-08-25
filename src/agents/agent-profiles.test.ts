@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { ModelSizeClass } from "../config/types.models.js";
 import {
   applyAgentProfileToolSearchDefaults,
+  buildAgentProfileSystemPrompt,
   filterToolsByAgentProfile,
   resolveAgentProfile,
   resolveAgentProfilePreserveToolNames,
@@ -117,6 +118,46 @@ describe("Agent Profile selection", () => {
 
     expect(resolved.profile.id).toBe("openclaw/small");
     expect(resolved.selectionSource).toBe("model-size");
+  });
+});
+
+describe("small profile prompt behavior", () => {
+  const resolvedProfile = resolveAgentProfile({
+    modelProvider: "llama-cpp",
+    modelId: "qwen3.6-35b-a3b",
+  });
+
+  it("uses a minimum prompt instead of the standard OpenClaw prompt", () => {
+    const prompt = buildAgentProfileSystemPrompt({
+      resolvedProfile,
+      messageToolAvailable: false,
+    });
+
+    expect(prompt).toContain("You are a personal assistant running inside OpenClaw.");
+    expect(prompt).toContain("use tool_search to find a deferred tool");
+    expect(prompt).toContain("read the applicable AGENTS.md instructions");
+    expect(prompt).toContain("Return the visible reply as assistant text.");
+    expect(prompt?.length).toBeLessThan(1_000);
+  });
+
+  it("preserves message-owned delivery instructions", () => {
+    const prompt = buildAgentProfileSystemPrompt({
+      resolvedProfile,
+      sourceReplyDeliveryMode: "message_tool_only",
+      messageToolAvailable: true,
+    });
+
+    expect(prompt).toContain("Send the visible reply with the message tool.");
+    expect(prompt).toContain("return exactly NO_REPLY");
+  });
+
+  it("leaves the base profile on the standard prompt path", () => {
+    expect(
+      buildAgentProfileSystemPrompt({
+        resolvedProfile: resolveAgentProfile({}),
+        messageToolAvailable: false,
+      }),
+    ).toBeUndefined();
   });
 });
 

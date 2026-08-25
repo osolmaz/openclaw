@@ -19,7 +19,7 @@ context-window settings, or local serving configuration.
 | Profile           | Parent          | Initial behavior                                   |
 | ----------------- | --------------- | -------------------------------------------------- |
 | `openclaw/base`   | none            | Standard OpenClaw behavior and fallback            |
-| `openclaw/small`  | `openclaw/base` | Lean direct tools and bounded Tool Search defaults |
+| `openclaw/small`  | `openclaw/base` | Minimum system prompt, lean tools, and Tool Search |
 | `openclaw/medium` | `openclaw/base` | Base behavior with a stable medium-model identity  |
 | `openclaw/large`  | `openclaw/base` | Base behavior with a stable large-model identity   |
 
@@ -96,8 +96,15 @@ Override one agent:
 
 ## Small profile behavior
 
-`openclaw/small` removes heavyweight optional tools from the direct model
-surface: `browser`, `automations`, `message`, `image_generate`,
+`openclaw/small` replaces the standard OpenClaw system prompt with a built-in
+minimum prompt. The minimum prompt covers tool-result truth, deferred tool use,
+on-demand `AGENTS.md` loading, private data, risky actions, concise replies, and
+active delivery behavior. It does not inject workspace files or the skill
+catalog. The model can read applicable workspace instructions and use deferred
+tools when the task needs them.
+
+The profile also removes the same heavyweight optional tools as the retired
+Lean toggle: `browser`, `automations`, `message`, `image_generate`,
 `music_generate`, `video_generate`, `tts`, and `pdf`.
 
 Explicitly allowed tools and delivery-required tools remain available. When

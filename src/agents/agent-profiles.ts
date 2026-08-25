@@ -1,6 +1,7 @@
 /** Built-in Agent Profile registry, selection, and OpenClaw tool behavior. */
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
+import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { AgentProfileId, AgentProfileSelector } from "../config/agent-profile-ids.js";
 import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -20,7 +21,7 @@ type AgentProfileSelectionSource =
   | "fallback";
 
 type AgentProfileThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
-type AgentProfileSystemPrompt = { text: string } | { file: { path: string } };
+type AgentProfileSystemPrompt = { text: string };
 type BuiltInAgentProfile = {
   id: AgentProfileId;
   extends?: AgentProfileId;
@@ -52,6 +53,12 @@ export type ResolvedAgentProfile = {
   selectionSource: AgentProfileSelectionSource;
 };
 
+const SMALL_AGENT_SYSTEM_PROMPT = `You are a personal assistant running inside OpenClaw.
+Follow the user's request. Be direct and concise. Use tools when needed, and do not claim success until a tool result confirms it.
+Tool availability and policy are authoritative. When available, use tool_search to find a deferred tool, tool_describe when its arguments are unclear, and tool_call to invoke it.
+Before changing files, read the applicable AGENTS.md instructions. Read other workspace files only when needed.
+Keep credentials and private data secret. Ask before destructive, irreversible, costly, or externally visible actions unless the user clearly authorized them.`;
+
 const BUILT_IN_AGENT_PROFILES: readonly BuiltInAgentProfile[] = [
   {
     id: "openclaw/base",
@@ -60,7 +67,10 @@ const BUILT_IN_AGENT_PROFILES: readonly BuiltInAgentProfile[] = [
   {
     id: "openclaw/small",
     extends: "openclaw/base",
-    spec: { common: {}, "openclaw.ai": { toolProfile: "lean" } },
+    spec: {
+      common: { systemPrompt: { text: SMALL_AGENT_SYSTEM_PROMPT } },
+      "openclaw.ai": { toolProfile: "lean" },
+    },
   },
   {
     id: "openclaw/medium",
@@ -236,6 +246,22 @@ export function resolveAgentProfile(params: {
     profile: resolveBuiltInProfile(automatic.profileId),
     selectionSource: automatic.source,
   };
+}
+
+export function buildAgentProfileSystemPrompt(params: {
+  resolvedProfile: ResolvedAgentProfile;
+  sourceReplyDeliveryMode?: string;
+  messageToolAvailable: boolean;
+}): string | undefined {
+  const source = params.resolvedProfile.profile.spec.common.systemPrompt;
+  if (!source) {
+    return undefined;
+  }
+  const deliveryInstruction =
+    params.sourceReplyDeliveryMode === "message_tool_only" && params.messageToolAvailable
+      ? `Send the visible reply with the message tool. After it succeeds, return exactly ${SILENT_REPLY_TOKEN}.`
+      : "Return the visible reply as assistant text. Use the message tool only when the user asks you to send to another target.";
+  return `${source.text.trim()}\n${deliveryInstruction}`;
 }
 
 function resolvePreservedToolNames(names?: Iterable<string>) {
