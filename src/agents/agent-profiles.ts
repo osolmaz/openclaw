@@ -12,7 +12,7 @@ import { compileGlobPatterns, matchesAnyGlobPattern } from "./glob-pattern.js";
 import { expandToolGroups, normalizeToolPolicyName } from "./tool-policy.js";
 import { AUTOMATIONS_TOOL_NAME } from "./tools/automations-tool-name.js";
 
-export type AgentProfileSelectionSource =
+type AgentProfileSelectionSource =
   | "agent-explicit"
   | "defaults-explicit"
   | "model"

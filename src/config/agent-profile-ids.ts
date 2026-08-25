@@ -1,4 +1,4 @@
-export const AGENT_PROFILE_IDS = [
+const AGENT_PROFILE_IDS = [
   "openclaw/base",
   "openclaw/small",
   "openclaw/medium",
