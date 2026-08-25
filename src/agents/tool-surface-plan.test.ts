@@ -86,6 +86,19 @@ describe("resolveAgentToolSurfacePlan", () => {
     });
   });
 
+  it("enables Tool Search from trusted model-size metadata", () => {
+    const plan = resolveAgentToolSurfacePlan({
+      ...basePlanParams,
+      config: {},
+      model: { modelSizeClass: "small" },
+      modelProvider: "custom",
+      modelId: "unbound-model",
+    });
+
+    expect(plan.toolSearchControlsEnabled).toBe(true);
+    expect(plan.toolSearchConfig.mode).toBe("tools");
+  });
+
   it("preserves Code Mode controls for a checkpoint-proven restart recovery", () => {
     const config: OpenClawConfig = {
       tools: { codeMode: false, toolSearch: true },

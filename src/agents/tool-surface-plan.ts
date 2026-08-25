@@ -1,3 +1,4 @@
+import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ResolvedAgentProfile } from "./agent-profiles.js";
 import { getActiveAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
@@ -23,7 +24,7 @@ type AgentToolSurfacePlanParams = {
   modelId?: string;
   resolvedProfile?: ResolvedAgentProfile;
   forceDirectMessageTool: boolean;
-  model?: { compat?: unknown };
+  model?: { compat?: unknown; modelSizeClass?: ModelSizeClass };
   toolsEnabled: boolean;
   disableTools?: boolean;
   isRawModelRun: boolean;
@@ -40,6 +41,7 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     sessionKey: params.sessionKey,
     modelProvider: params.modelProvider,
     modelId: params.modelId,
+    modelSizeClass: params.model?.modelSizeClass,
     resolvedProfile: params.resolvedProfile,
     forceDirectMessageTool: params.forceDirectMessageTool,
   });

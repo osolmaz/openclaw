@@ -2,6 +2,7 @@
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
 import type { AgentProfileId, AgentProfileSelector } from "../config/agent-profile-ids.js";
+import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import { resolveAgentConfig } from "./agent-scope-config.js";
@@ -11,7 +12,6 @@ import { compileGlobPatterns, matchesAnyGlobPattern } from "./glob-pattern.js";
 import { expandToolGroups, normalizeToolPolicyName } from "./tool-policy.js";
 import { AUTOMATIONS_TOOL_NAME } from "./tools/automations-tool-name.js";
 
-export type AgentProfileModelSizeClass = "tiny" | "small" | "medium" | "large";
 export type AgentProfileSelectionSource =
   | "agent-explicit"
   | "defaults-explicit"
@@ -43,7 +43,7 @@ type AgentProfileBinding =
       profileId: AgentProfileId;
     }
   | {
-      selector: { modelSizeClass: AgentProfileModelSizeClass };
+      selector: { modelSizeClass: ModelSizeClass };
       profileId: AgentProfileId;
     };
 
@@ -192,7 +192,7 @@ function resolveConfiguredSelector(params: {
 function resolveAutomaticBinding(params: {
   modelProvider?: string;
   modelId?: string;
-  modelSizeClass?: AgentProfileModelSizeClass;
+  modelSizeClass?: ModelSizeClass;
 }): { profileId: AgentProfileId; source: AgentProfileSelectionSource } {
   const providerId = params.modelProvider ? normalizeProviderId(params.modelProvider) : undefined;
   const modelId = params.modelId?.trim().toLowerCase();
@@ -222,7 +222,7 @@ export function resolveAgentProfile(params: {
   sessionKey?: string;
   modelProvider?: string;
   modelId?: string;
-  modelSizeClass?: AgentProfileModelSizeClass;
+  modelSizeClass?: ModelSizeClass;
 }): ResolvedAgentProfile {
   const configured = resolveConfiguredSelector(params);
   if (configured.selector !== "auto") {
@@ -267,7 +267,7 @@ export function filterToolsByAgentProfile(params: {
   sessionKey?: string;
   modelProvider?: string;
   modelId?: string;
-  modelSizeClass?: AgentProfileModelSizeClass;
+  modelSizeClass?: ModelSizeClass;
   resolvedProfile?: ResolvedAgentProfile;
   preserveToolNames?: Iterable<string>;
 }): AnyAgentTool[] {
@@ -291,7 +291,7 @@ export function applyAgentProfileToolSearchDefaults(params: {
   sessionKey?: string;
   modelProvider?: string;
   modelId?: string;
-  modelSizeClass?: AgentProfileModelSizeClass;
+  modelSizeClass?: ModelSizeClass;
   resolvedProfile?: ResolvedAgentProfile;
 }): OpenClawConfig | undefined {
   if (!params.config) {

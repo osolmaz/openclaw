@@ -11,7 +11,7 @@ import { HEARTBEAT_RESPONSE_TOOL_NAME } from "../auto-reply/heartbeat-tool-respo
 import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
 import type { ChatType } from "../channels/chat-type.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
-import type { ModelCompatConfig } from "../config/types.models.js";
+import type { ModelCompatConfig, ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GroupToolPolicyConfig } from "../config/types.tools.js";
 import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
@@ -126,6 +126,7 @@ function applyModelProviderToolPolicy(
     modelProvider?: string;
     modelApi?: string;
     modelId?: string;
+    modelSizeClass?: ModelSizeClass;
     resolvedAgentProfile?: ResolvedAgentProfile;
     agentId?: string;
     sessionKey?: string;
@@ -144,6 +145,7 @@ function applyModelProviderToolPolicy(
     sessionKey: params?.sessionKey,
     modelProvider: params?.modelProvider,
     modelId: params?.modelId,
+    modelSizeClass: params?.modelSizeClass,
     resolvedProfile: params?.resolvedAgentProfile,
     preserveToolNames: params?.agentProfilePreserveToolNames ?? params?.runtimeToolAllowlist,
   });
@@ -246,6 +248,8 @@ type OpenClawCodingToolsOptions = {
   modelProvider?: string;
   /** Model id for the current provider (used for model-specific tool gating). */
   modelId?: string;
+  /** Trusted total-parameter size class used for Agent Profile selection. */
+  modelSizeClass?: ModelSizeClass;
   /** Run-scoped Agent Profile selected for this model. */
   resolvedAgentProfile?: ResolvedAgentProfile;
   /** Internal review-run restrictions and proposal provenance. */
@@ -911,6 +915,7 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
     modelProvider: options?.modelProvider,
     modelApi: options?.modelApi,
     modelId: options?.modelId,
+    modelSizeClass: options?.modelSizeClass,
     resolvedAgentProfile: options?.resolvedAgentProfile,
     agentId: options?.agentId,
     sessionKey: options?.sessionKey,

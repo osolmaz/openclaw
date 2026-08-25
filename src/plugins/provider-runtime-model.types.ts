@@ -1,7 +1,11 @@
 // Defines runtime model metadata supplied by provider plugins.
 import type { ModelCatalogContextWindowOption } from "@openclaw/model-catalog-core/model-catalog-types";
 import type { Model } from "openclaw/plugin-sdk/llm";
-import type { ModelCompatConfig, ModelMediaInputConfig } from "../config/types.models.js";
+import type {
+  ModelCompatConfig,
+  ModelMediaInputConfig,
+  ModelSizeClass,
+} from "../config/types.models.js";
 
 /**
  * Fully-resolved runtime model shape used after provider/plugin-owned
@@ -12,6 +16,7 @@ export type ProviderRuntimeModel = Omit<Model, "compat"> & {
   contextWindows?: ModelCatalogContextWindowOption[];
   contextWindowDefault?: string;
   contextTokens?: number;
+  modelSizeClass?: ModelSizeClass;
   /** Host-resolved provenance for the top-level wire output cap. */
   maxTokensSource?: "configured" | "discovered";
   params?: Record<string, unknown>;

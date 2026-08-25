@@ -114,6 +114,25 @@ describe("ModelsConfigSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts trusted model-size metadata", () => {
+    const result = ModelsConfigSchema.safeParse({
+      providers: {
+        custom: {
+          baseUrl: "http://127.0.0.1:8080/v1",
+          models: [
+            {
+              id: "small-model",
+              name: "Small Model",
+              modelSizeClass: "small",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("accepts catalog-declared temperature compatibility", () => {
     const result = ModelsConfigSchema.safeParse({
       providers: {

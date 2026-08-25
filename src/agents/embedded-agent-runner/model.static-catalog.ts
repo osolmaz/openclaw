@@ -121,6 +121,7 @@ function modelFromProviderStaticCatalog(params: {
     cost: model?.cost ?? normalizeStaticCatalogCost(params.model.cost),
     contextWindow: model?.contextWindow ?? params.model.contextWindow ?? DEFAULT_CONTEXT_TOKENS,
     contextTokens: model?.contextTokens ?? params.model.contextTokens,
+    modelSizeClass: model?.modelSizeClass ?? params.model.modelSizeClass,
     maxTokens:
       model?.maxTokens ??
       params.model.maxTokens ??

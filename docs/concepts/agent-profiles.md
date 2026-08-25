@@ -45,8 +45,10 @@ Trusted model-size classes select these profiles:
 | `medium`         | `openclaw/medium` |
 | `large`          | `openclaw/large`  |
 
-OpenClaw does not infer parameter count from model names. Unknown model-size
-metadata falls back to `openclaw/base` unless an exact binding matches.
+OpenClaw does not infer parameter count from model names. Trusted configured
+metadata uses `models.providers.<provider>.models[].modelSizeClass`. Unknown
+model-size metadata falls back to `openclaw/base` unless an exact binding
+matches.
 
 ## Configuration
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
+import type { ModelSizeClass } from "../config/types.models.js";
 import {
   applyAgentProfileToolSearchDefaults,
   filterToolsByAgentProfile,
   resolveAgentProfile,
   resolveAgentProfilePreserveToolNames,
-  type AgentProfileModelSizeClass,
 } from "./agent-profiles.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
 
@@ -229,7 +229,7 @@ describe("small profile Tool Search defaults", () => {
     ).toBe(config);
   });
 
-  it.each<AgentProfileModelSizeClass>(["tiny", "small"])(
+  it.each<ModelSizeClass>(["tiny", "small"])(
     "enables Tool Search for %s model metadata",
     (modelSizeClass) => {
       expect(

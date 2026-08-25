@@ -1,4 +1,5 @@
 import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-delivery-mode.js";
+import type { ModelSizeClass } from "../../config/types.models.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
   filterToolsByAgentProfile,
@@ -65,7 +66,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(params: {
   forceMessageTool?: boolean;
   isRawModelRun?: boolean;
   /** Prepared model row carrying catalog compat; required for `"auto"` code-mode resolution. */
-  model?: { compat?: unknown };
+  model?: { compat?: unknown; modelSizeClass?: ModelSizeClass };
   modelId?: string;
   modelProvider?: string;
   modelToolsEnabled: boolean;
@@ -85,6 +86,7 @@ export function createAgentHarnessToolSurfaceRuntimeCore(params: {
     sessionKey: params.sessionKey,
     modelProvider: params.modelProvider,
     modelId: params.modelId,
+    modelSizeClass: params.model?.modelSizeClass,
   });
   const {
     codeModeControlsEnabled,

@@ -98,6 +98,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
     sessionKey: attempt.sessionKey,
     modelProvider: attempt.provider,
     modelId: attempt.modelId,
+    modelSizeClass: attempt.model.modelSizeClass,
   });
   const {
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
@@ -303,6 +304,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
           abortSignal: params.runAbortController.signal,
           modelProvider: attempt.provider,
           modelId: attempt.modelId,
+          modelSizeClass: attempt.model.modelSizeClass,
           skillWorkshop: {
             env: attempt.skillWorkshopProposalEnv,
             proposalOnly: attempt.skillWorkshopProposalOnly,
