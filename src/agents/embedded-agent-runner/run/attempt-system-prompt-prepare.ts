@@ -293,6 +293,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     resolvedProfile: params.agentProfile,
     sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
     messageToolAvailable: params.effectiveTools.some((tool) => tool.name === "message"),
+    runtimeSystemPrompt: extraSystemPrompt,
   });
   const attemptSystemPrompt = buildAttemptSystemPrompt({
     isRawModelRun: params.isRawModelRun,

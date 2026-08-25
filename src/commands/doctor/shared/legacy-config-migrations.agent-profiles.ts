@@ -59,14 +59,12 @@ function migrateLegacyLeanFlag(
     return;
   }
   const leanEnabled = experimental.localModelLean === true;
-  if (leanEnabled && agent.agentProfileId === undefined) {
-    agent.agentProfileId = "openclaw/small";
+  if (agent.agentProfileId === undefined) {
+    agent.agentProfileId = leanEnabled ? "openclaw/small" : "openclaw/base";
     changes.push(`Moved ${pathLabel}.experimental.localModelLean → ${pathLabel}.agentProfileId.`);
   } else {
     changes.push(
-      leanEnabled
-        ? `Removed ${pathLabel}.experimental.localModelLean; kept the explicit Agent Profile.`
-        : `Removed ${pathLabel}.experimental.localModelLean.`,
+      `Removed ${pathLabel}.experimental.localModelLean; kept the explicit Agent Profile.`,
     );
   }
   delete experimental.localModelLean;

@@ -252,6 +252,7 @@ export function buildAgentProfileSystemPrompt(params: {
   resolvedProfile: ResolvedAgentProfile;
   sourceReplyDeliveryMode?: string;
   messageToolAvailable: boolean;
+  runtimeSystemPrompt?: string;
 }): string | undefined {
   const source = params.resolvedProfile.profile.spec.common.systemPrompt;
   if (!source) {
@@ -261,7 +262,9 @@ export function buildAgentProfileSystemPrompt(params: {
     params.sourceReplyDeliveryMode === "message_tool_only" && params.messageToolAvailable
       ? `Send the visible reply with the message tool. After it succeeds, return exactly ${SILENT_REPLY_TOKEN}.`
       : "Return the visible reply as assistant text. Use the message tool only when the user asks you to send to another target.";
-  return `${source.text.trim()}\n${deliveryInstruction}`;
+  return [source.text.trim(), deliveryInstruction, params.runtimeSystemPrompt?.trim()]
+    .filter((section): section is string => Boolean(section))
+    .join("\n\n");
 }
 
 function resolvePreservedToolNames(names?: Iterable<string>) {

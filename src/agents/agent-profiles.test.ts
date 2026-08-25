@@ -140,6 +140,16 @@ describe("small profile prompt behavior", () => {
     expect(prompt?.length).toBeLessThan(1_000);
   });
 
+  it("preserves runtime-supplied system instructions", () => {
+    const prompt = buildAgentProfileSystemPrompt({
+      resolvedProfile,
+      messageToolAvailable: false,
+      runtimeSystemPrompt: "Complete the delegated task: RUNTIME_CONTEXT_MARKER",
+    });
+
+    expect(prompt).toContain("RUNTIME_CONTEXT_MARKER");
+  });
+
   it("preserves message-owned delivery instructions", () => {
     const prompt = buildAgentProfileSystemPrompt({
       resolvedProfile,

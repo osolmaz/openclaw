@@ -125,8 +125,9 @@ tool schemas used for the request.
 
 Run `openclaw doctor --fix` to migrate
 `agents.defaults.experimental.localModelLean` and per-agent equivalents.
-Enabled values become `agentProfileId: "openclaw/small"`; disabled values are
-removed. Doctor also migrates onboarding ownership metadata.
+Enabled values become `agentProfileId: "openclaw/small"`; disabled values become
+`agentProfileId: "openclaw/base"` so per-agent Lean opt-outs remain opt-outs.
+Doctor also migrates onboarding ownership metadata.
 
 ## Related
 

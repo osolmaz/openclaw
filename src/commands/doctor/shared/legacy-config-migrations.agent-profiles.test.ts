@@ -29,7 +29,7 @@ describe("legacy Agent Profile migration", () => {
     expect(result.changes).toHaveLength(3);
   });
 
-  it("removes disabled flags and preserves other experimental values", () => {
+  it("maps disabled flags to base and preserves other experimental values", () => {
     const result = migrate({
       agents: {
         defaults: {
@@ -39,7 +39,30 @@ describe("legacy Agent Profile migration", () => {
     });
 
     expect(result.raw).toEqual({
-      agents: { defaults: { experimental: { otherPreview: true } } },
+      agents: {
+        defaults: {
+          agentProfileId: "openclaw/base",
+          experimental: { otherPreview: true },
+        },
+      },
+    });
+  });
+
+  it("preserves per-agent opt-outs from an enabled default", () => {
+    const result = migrate({
+      agents: {
+        defaults: { experimental: { localModelLean: true } },
+        entries: { full: { experimental: { localModelLean: false } } },
+        list: [{ id: "legacy-full", experimental: { localModelLean: false } }],
+      },
+    });
+
+    expect(result.raw).toEqual({
+      agents: {
+        defaults: { agentProfileId: "openclaw/small" },
+        entries: { full: { agentProfileId: "openclaw/base" } },
+        list: [{ id: "legacy-full", agentProfileId: "openclaw/base" }],
+      },
     });
   });
 
