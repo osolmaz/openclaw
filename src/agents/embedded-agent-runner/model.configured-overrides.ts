@@ -576,6 +576,10 @@ export function applyConfiguredProviderOverrides(params: {
           cost: metadataOverrideModel?.cost ?? discoveredModel.cost,
           contextWindow: resolvedContextWindow ?? discoveredModel.contextWindow,
           contextTokens: metadataOverrideModel?.contextTokens ?? discoveredModel.contextTokens,
+          modelSizeClass:
+            metadataOverrideModel?.modelSizeClass ??
+            configuredStaticCatalogModel?.modelSizeClass ??
+            discoveredModel.modelSizeClass,
           ...(normalizedResolvedMaxTokens !== undefined
             ? {
                 maxTokens: normalizedResolvedMaxTokens,

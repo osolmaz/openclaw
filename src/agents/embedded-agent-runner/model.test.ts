@@ -3817,6 +3817,7 @@ describe("resolveModel", () => {
                 ...makeModel("glm-5"),
                 api: "openai-completions",
                 reasoning: true,
+                modelSizeClass: "small",
                 contextWindow: 198000,
                 maxTokens: 16000,
               },
@@ -3835,6 +3836,7 @@ describe("resolveModel", () => {
       api: "openai-completions",
       baseUrl: "http://new-provider.example.com/v1",
       reasoning: true,
+      modelSizeClass: "small",
       contextWindow: 198000,
       maxTokens: 16000,
     });

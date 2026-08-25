@@ -357,7 +357,17 @@ function buildExecRunOverlay(params: {
         ...(agentProfileId ? { agentProfileId } : {}),
       },
       ...(entries.length > 0
-        ? { entries: Object.fromEntries(entries.map((id) => [id, { workspace: params.cwd }])) }
+        ? {
+            entries: Object.fromEntries(
+              entries.map((id) => [
+                id,
+                {
+                  workspace: params.cwd,
+                  ...(agentProfileId ? { agentProfileId } : {}),
+                },
+              ]),
+            ),
+          }
         : {}),
     },
     // This process exits after one turn, so live skill invalidation cannot be
