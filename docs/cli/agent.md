@@ -55,11 +55,11 @@ Select the one-shot tool surface explicitly when comparing local or smaller mode
 openclaw agent exec "Inspect this repository" \
   --model ollama/qwen3.5:9b \
   --code-mode code \
-  --local-model-lean \
+  --agent-profile openclaw/small \
   --json
 ```
 
-`--code-mode direct` disables Code Mode, `auto` uses model capability metadata, and `code` forces the generic Code Mode surface for tool-capable runs. `--local-model-lean` removes high-latency and channel-dependent tools and enables the bounded Tool Search defaults for the isolated run.
+`--code-mode direct` disables Code Mode, `auto` uses model capability metadata, and `code` forces the generic Code Mode surface for tool-capable runs. `--agent-profile openclaw/small` selects the small built-in profile, which removes high-latency and channel-dependent tools and enables bounded Tool Search defaults for the isolated run.
 
 The timeout defaults to 600 seconds for `agent exec`; this does not change the existing embedded `agent --local` default. A successful run exits `0`, any model or result error exits `1`, and a timeout exits `2`. Failure includes `meta.error`, aborted runs, exhausted model fallbacks, an error stop reason, and any error payload.
 
@@ -119,7 +119,7 @@ This is evaluation-only evidence, not a CI or release gate. Results do not chang
 - `--isolated`: ignore the ambient config and use only exec defaults
 - `--model <provider/model>`: explicit primary model
 - `--code-mode <mode>`: select `direct`, `auto`, or forced `code` tool mode
-- `--local-model-lean`: use the reduced local-model tool surface
+- `--agent-profile <id>`: select a built-in Agent Profile for this run
 - `--thinking <level>`: one-run thinking level
 - `--fallback <provider/model>`: ordered fallback model; repeatable and requires `--model`
 - `--auth-env-only`: use only environment provider keys; skips stored credentials, external CLI credentials, and config entirely

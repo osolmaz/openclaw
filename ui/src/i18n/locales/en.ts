@@ -3435,11 +3435,6 @@ export const en: TranslationMap = {
       description:
         "Enable rolling-history guards that warn or block repeated tool calls when an agent stops making progress.",
     },
-    localModelLean: {
-      title: "Lean tools for local models",
-      description:
-        "Drop heavyweight default tools that smaller local models handle poorly, leaving a shorter set they can use reliably.",
-    },
     cliAgents: {
       title: "CLI agents",
       description:
