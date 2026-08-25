@@ -19,10 +19,15 @@ const COPILOT_HARNESS_IDENTITY =
 export function buildCopilotPromptGuidance(params: {
   attempt: AttemptParamsLike;
   callableToolNames: Iterable<string>;
+  agentProfileSystemPrompt?: string;
   workspaceBootstrapInstructions?: string;
 }): string | undefined {
   if (isRawCopilotModelRun(params.attempt)) {
     return undefined;
+  }
+  const agentProfileSystemPrompt = params.agentProfileSystemPrompt?.trim();
+  if (agentProfileSystemPrompt) {
+    return agentProfileSystemPrompt;
   }
   const callableTools = new Set(normalizeUniqueStringEntries(params.callableToolNames));
   const hasSessionsSpawn = callableTools.has("sessions_spawn");

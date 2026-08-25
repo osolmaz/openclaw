@@ -1408,10 +1408,16 @@ describe("createCopilotToolBridge", () => {
     it("short-circuits when attemptParams.disableTools is true and never calls createOpenClawCodingTools", async () => {
       const createOpenClawCodingTools = vi.fn(async () => [makeTool()]);
       const result = await createCopilotToolBridge({
-        attemptParams: { disableTools: true } as never,
+        attemptParams: {
+          disableTools: true,
+          config: { agents: { defaults: { agentProfileId: "openclaw/small" } } },
+        } as never,
         createOpenClawCodingTools,
       });
       expect(result.codeModeEngaged).toBe(false);
+      expect(result.agentProfileSystemPrompt).toContain(
+        "You are a personal assistant running inside OpenClaw.",
+      );
       expect(result.promptToolPolicy.apply()).toEqual({ tools: [], callableToolNames: [] });
       expect(result.sourceTools).toEqual([]);
       expect(createOpenClawCodingTools).toHaveBeenCalledTimes(0);
@@ -1657,11 +1663,11 @@ describe("createCopilotToolBridge", () => {
       expect(result.sourceTools.map((tool) => tool.name).toSorted()).toEqual(["edit", "read"]);
     });
 
-    it("does not discard lean-mode overrides after tool construction", async () => {
+    it("keeps small-profile prompt and tool overrides on the same selection", async () => {
       const result = await createCopilotToolBridge({
         attemptParams: {
           config: {
-            agents: { defaults: { experimental: { localModelLean: true } } },
+            agents: { defaults: { agentProfileId: "openclaw/small" } },
             tools: { alsoAllow: ["image_generate"] },
           },
         } as never,
@@ -1669,6 +1675,9 @@ describe("createCopilotToolBridge", () => {
       });
 
       expect(result.sourceTools.map((tool) => tool.name)).toEqual(["image_generate"]);
+      expect(result.agentProfileSystemPrompt).toContain(
+        "You are a personal assistant running inside OpenClaw.",
+      );
     });
 
     it("keeps plugin tools for plugin group allowlists", async () => {

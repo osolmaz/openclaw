@@ -2,6 +2,7 @@ import { messageToolOwnsVisibleReply } from "../../auto-reply/source-reply-deliv
 import type { ModelSizeClass } from "../../config/types.models.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
+  buildAgentProfileSystemPrompt,
   filterToolsByAgentProfile,
   resolveAgentProfile,
   resolveAgentProfilePreserveToolNames,
@@ -41,6 +42,11 @@ const CODE_MODE_CONTROL_ALLOWLIST_NAMES = [CODE_MODE_EXEC_TOOL_NAME, CODE_MODE_W
 export type AgentHarnessToolSurfaceRuntime = {
   codeModeControlsEnabled: boolean;
   agentProfile: ResolvedAgentProfile;
+  buildAgentProfileSystemPrompt: (params: {
+    sourceReplyDeliveryMode?: string;
+    messageToolAvailable: boolean;
+    runtimeSystemPrompt?: string;
+  }) => string | undefined;
   compactTools: (
     tools: AnyAgentTool[],
     options?: { hookContext?: HookContext; agentProfileApplied?: boolean },
@@ -210,6 +216,11 @@ export function createAgentHarnessToolSurfaceRuntimeCore(params: {
   };
   return {
     agentProfile,
+    buildAgentProfileSystemPrompt: (promptParams) =>
+      buildAgentProfileSystemPrompt({
+        resolvedProfile: agentProfile,
+        ...promptParams,
+      }),
     codeModeControlsEnabled,
     compactTools,
     config: toolSearchControlsEnabled ? toolSearchRuntimeConfig : params.config,

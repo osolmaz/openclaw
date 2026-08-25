@@ -153,6 +153,7 @@ interface CopilotToolBridgeInput {
 interface CopilotToolBridge {
   cleanup?: () => void;
   codeModeEngaged?: boolean;
+  agentProfileSystemPrompt?: string;
   promptToolPolicy: {
     apply: (params?: { toolsAllow?: string[]; forceToolNames?: readonly string[] }) => {
       tools: SdkTool[];
@@ -198,14 +199,6 @@ export async function createCopilotToolBridge(
         includeCoreTools: true,
       }
     : toolPlan;
-  if (!effectiveToolPlan.constructTools) {
-    return { codeModeEngaged: false, promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY, sourceTools: [] };
-  }
-
-  const createOpenClawCodingTools =
-    input.createOpenClawCodingTools ??
-    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
-
   const toolSurfaceRuntime = createAgentHarnessToolSurfaceRuntime({
     abortSignal: input.abortSignal,
     agentId: input.agentId,
@@ -218,7 +211,7 @@ export async function createCopilotToolBridge(
     model: attemptParams.model,
     modelId: input.modelId,
     modelProvider: input.modelProvider,
-    modelToolsEnabled: true,
+    modelToolsEnabled: effectiveToolPlan.constructTools,
     prompt: attemptParams.prompt,
     runId: attemptParams.runId,
     runtimeToolAllowlist: effectiveToolPlan.runtimeToolAllowlist,
@@ -228,6 +221,24 @@ export async function createCopilotToolBridge(
     sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
     toolsAllow: attemptParams.toolsAllow,
   });
+  if (!effectiveToolPlan.constructTools) {
+    return {
+      cleanup: toolSurfaceRuntime.cleanup,
+      codeModeEngaged: false,
+      agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+        sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+        messageToolAvailable: false,
+        runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+      }),
+      promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY,
+      sourceTools: [],
+    };
+  }
+
+  const createOpenClawCodingTools =
+    input.createOpenClawCodingTools ??
+    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
+
   const toolOptions = buildOpenClawCodingToolsOptions(
     input,
     {
@@ -316,6 +327,11 @@ export async function createCopilotToolBridge(
     // got code-mode controls. Without it the run reports `codeModeEngaged`
     // as unset and telemetry cannot tell "off" from "harness did not report".
     codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+    agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+      sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+      messageToolAvailable: exposedTools.some((tool) => tool.name === "message"),
+      runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+    }),
     promptToolPolicy: {
       apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
         const result = compactedTools.promptToolPolicy.apply(params);
