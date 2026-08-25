@@ -4,6 +4,18 @@
     "target": "OpenClaw"
   },
   {
+    "source": "Agent Profiles",
+    "target": "智能体配置档"
+  },
+  {
+    "source": "Local models",
+    "target": "本地模型"
+  },
+  {
+    "source": "Context",
+    "target": "上下文"
+  },
+  {
     "source": "macOS platform notes",
     "target": "macOS 平台说明"
   },
