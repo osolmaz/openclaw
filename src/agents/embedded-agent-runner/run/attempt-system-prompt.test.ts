@@ -33,6 +33,16 @@ describe("buildAttemptSystemPrompt", () => {
       embeddedSystemPrompt: {
         workspaceDir: "/tmp/openclaw",
         reasoningTagHint: false,
+        runtimeInfo: {
+          host: "test-host",
+          os: "Linux",
+          arch: "x64",
+          node: "v24.18.0",
+          model: "openai/gpt-5.5",
+        },
+        tools: [],
+        userTimezone: "UTC",
+        userDate: "2026-08-25",
         contextFiles: [{ path: "/tmp/openclaw/AGENTS.md", content: "large workspace prompt" }],
       },
       providerTransform: baseProviderTransform,
