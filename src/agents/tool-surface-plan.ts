@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { ResolvedAgentProfile } from "./agent-profiles.js";
 import { getActiveAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
 import {
   applyCodeModeCatalog,
@@ -18,6 +19,9 @@ type AgentToolSurfacePlanParams = {
   config?: OpenClawConfig;
   agentId?: string;
   sessionKey?: string;
+  modelProvider?: string;
+  modelId?: string;
+  resolvedProfile?: ResolvedAgentProfile;
   forceDirectMessageTool: boolean;
   model?: { compat?: unknown };
   toolsEnabled: boolean;
@@ -34,6 +38,9 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     config: params.config,
     agentId: params.agentId,
     sessionKey: params.sessionKey,
+    modelProvider: params.modelProvider,
+    modelId: params.modelId,
+    resolvedProfile: params.resolvedProfile,
     forceDirectMessageTool: params.forceDirectMessageTool,
   });
   const toolSearchConfig = resolveToolSearchConfig(toolSearchRuntimeConfig);

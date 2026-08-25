@@ -756,14 +756,12 @@ describe("createOpenClawCodingTools", () => {
     expect(toolNameList(tools)).toContain("message");
   });
 
-  it("preserves runtime-allowed message through local model lean filtering", () => {
+  it("preserves runtime-allowed message through small Agent Profile filtering", () => {
     const tools = createOpenClawCodingTools({
       config: {
         agents: {
           defaults: {
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
         },
         tools: { profile: "minimal" },
@@ -781,14 +779,12 @@ describe("createOpenClawCodingTools", () => {
     expect(toolNameList(tools)).toContain("message");
   });
 
-  it("preserves configured media tools through local model lean filtering", () => {
+  it("preserves configured media tools through small Agent Profile filtering", () => {
     const tools = createOpenClawCodingTools({
       config: {
         agents: {
           defaults: {
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
           list: [
             {
@@ -830,14 +826,12 @@ describe("createOpenClawCodingTools", () => {
     );
   });
 
-  it("does not treat built-in profile tools as lean-mode overrides", () => {
+  it("does not treat built-in profile tools as Agent Profile overrides", () => {
     const tools = createOpenClawCodingTools({
       config: {
         agents: {
           defaults: {
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
         },
         tools: {
@@ -858,14 +852,12 @@ describe("createOpenClawCodingTools", () => {
     );
   });
 
-  it("preserves forced message through local model lean filtering without runtime allowlist", () => {
+  it("preserves forced message through small Agent Profile filtering without runtime allowlist", () => {
     const tools = createOpenClawCodingTools({
       config: {
         agents: {
           defaults: {
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
         },
         tools: { profile: "minimal" },
@@ -883,14 +875,12 @@ describe("createOpenClawCodingTools", () => {
     expect(toolNameList(tools)).toContain("message");
   });
 
-  it("preserves message-tool-only replies through local model lean filtering without runtime allowlist", () => {
+  it("preserves message-tool-only replies through small Agent Profile filtering without runtime allowlist", () => {
     const tools = createOpenClawCodingTools({
       config: {
         agents: {
           defaults: {
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
         },
         tools: { profile: "minimal" },

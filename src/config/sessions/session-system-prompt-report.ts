@@ -6,6 +6,10 @@ export type SessionSystemPromptReport = {
   sessionKey?: string;
   provider?: string;
   model?: string;
+  agentProfile?: {
+    id: string;
+    selectionSource: string;
+  };
   workspaceDir?: string;
   bootstrapMaxChars?: number;
   bootstrapTotalMaxChars?: number;

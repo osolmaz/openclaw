@@ -110,6 +110,7 @@ export function buildSystemPromptReport(params: {
   sessionKey?: string;
   provider?: string;
   model?: string;
+  agentProfile?: SessionSystemPromptReport["agentProfile"];
   workspaceDir?: string;
   bootstrapMaxChars: number;
   bootstrapTotalMaxChars?: number;
@@ -135,6 +136,7 @@ export function buildSystemPromptReport(params: {
     sessionKey: params.sessionKey,
     provider: params.provider,
     model: params.model,
+    agentProfile: params.agentProfile,
     workspaceDir: params.workspaceDir,
     bootstrapMaxChars: params.bootstrapMaxChars,
     bootstrapTotalMaxChars: params.bootstrapTotalMaxChars,

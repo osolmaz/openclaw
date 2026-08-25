@@ -34,6 +34,25 @@ describe("buildSystemPromptReport", () => {
       tools: [],
     });
 
+  it("records Agent Profile selection diagnostics", () => {
+    const report = buildSystemPromptReport({
+      source: "run",
+      generatedAt: 0,
+      bootstrapMaxChars: 20_000,
+      agentProfile: { id: "openclaw/small", selectionSource: "model" },
+      systemPrompt: "system",
+      bootstrapFiles: [],
+      injectedFiles: [],
+      skillsPrompt: "",
+      tools: [],
+    });
+
+    expect(report.agentProfile).toEqual({
+      id: "openclaw/small",
+      selectionSource: "model",
+    });
+  });
+
   it("counts injected chars when injected file paths are absolute", () => {
     const file = makeBootstrapFile({ path: "/tmp/workspace/policies/AGENTS.md" });
     const report = makeReport({

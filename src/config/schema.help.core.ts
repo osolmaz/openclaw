@@ -44,8 +44,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
   "wizard.lastRunCommit": "Source commit used by the last development wizard run.",
   "wizard.lastRunCommand": "Command that invoked the last wizard run.",
   "wizard.lastRunMode": 'Whether the last wizard run targeted "local" or "remote" setup.',
-  "wizard.localModelLeanAutoModel":
-    "Model reference whose lean-mode setting remains owned by onboarding.",
+  "wizard.agentProfileAutoModel":
+    "Model reference whose Agent Profile selection remains owned by onboarding.",
   "wizard.securityAcknowledgedAt":
     "Timestamp of the setup security acknowledgement, committed with the target config.",
   "logging.audit":
@@ -295,10 +295,8 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Per-agent override for max characters of each workspace bootstrap file injected into this agent's system prompt. Omit to inherit agents.defaults.bootstrapMaxChars.",
   "agents.entries.*.bootstrapTotalMaxChars":
     "Per-agent override for max total characters across all workspace bootstrap files injected into this agent's system prompt. Omit to inherit agents.defaults.bootstrapTotalMaxChars.",
-  "agents.entries.*.experimental":
-    "Per-agent experimental flags. Omitted fields inherit agents.defaults.experimental.",
-  "agents.entries.*.experimental.localModelLean":
-    "Per-agent override for lean local-model mode. Enable it for one smaller local-model agent without trimming tools from every agent.",
+  "agents.entries.*.agentProfileId":
+    'Per-agent Agent Profile selector. Use "auto" for model bindings or a registered profile id for an explicit override.',
   "agents.defaults.contextLimits":
     "Focused per-agent-context budget defaults for selected high-volume excerpts and injected prompt blocks. Use this to tune bounded read/injection sizes without reopening any unbounded call paths.",
   "agents.defaults.contextLimits.memoryGetMaxChars":

@@ -1,12 +1,18 @@
 // Applies Tool Search overlays on top of the selected runtime config.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { applyLocalModelLeanToolSearchDefaults } from "./local-model-lean.js";
+import {
+  applyAgentProfileToolSearchDefaults,
+  type ResolvedAgentProfile,
+} from "./agent-profiles.js";
 import { resolveAgentRuntimeToolConfig } from "./tool-runtime-config.js";
 
 export function resolveAgentToolSearchRuntimeConfig(params: {
   config?: OpenClawConfig;
   agentId?: string;
   sessionKey?: string;
+  modelProvider?: string;
+  modelId?: string;
+  resolvedProfile?: ResolvedAgentProfile;
   forceDirectMessageTool?: boolean;
 }): OpenClawConfig | undefined {
   // Select before overlay cloning; cloning source config first loses snapshot identity and can
@@ -15,9 +21,12 @@ export function resolveAgentToolSearchRuntimeConfig(params: {
   if (params.forceDirectMessageTool) {
     return runtimeConfig;
   }
-  return applyLocalModelLeanToolSearchDefaults({
+  return applyAgentProfileToolSearchDefaults({
     config: runtimeConfig,
     agentId: params.agentId,
     sessionKey: params.sessionKey,
+    modelProvider: params.modelProvider,
+    modelId: params.modelId,
+    resolvedProfile: params.resolvedProfile,
   });
 }

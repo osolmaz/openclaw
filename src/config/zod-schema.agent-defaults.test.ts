@@ -241,13 +241,22 @@ describe("agent defaults schema", () => {
     );
   });
 
-  it("accepts experimental.localModelLean", () => {
-    const result = AgentDefaultsSchema.parse({
-      experimental: {
-        localModelLean: true,
-      },
-    })!;
-    expect(result.experimental?.localModelLean).toBe(true);
+  it("accepts registered Agent Profile selectors", () => {
+    const defaults = AgentDefaultsSchema.parse({ agentProfileId: "auto" })!;
+    const agent = AgentEntrySchema.parse({
+      id: "worker",
+      agentProfileId: "openclaw/small",
+    });
+
+    expect(defaults.agentProfileId).toBe("auto");
+    expect(agent.agentProfileId).toBe("openclaw/small");
+    expectSchemaFailurePath(
+      AgentDefaultsSchema.safeParse({ agentProfileId: "unknown/profile" }),
+      "agentProfileId",
+    );
+    expect(AgentDefaultsSchema.safeParse({ experimental: { localModelLean: true } }).success).toBe(
+      false,
+    );
   });
 
   it("accepts contextInjection: always", () => {

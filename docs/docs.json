@@ -1243,6 +1243,7 @@
                   "concepts/soul",
                   "concepts/oauth",
                   "start/bootstrapping",
+                  "concepts/agent-profiles",
                   "concepts/experimental-features",
                   "concepts/qa-e2e-automation",
                   "concepts/personal-agent-benchmark-pack"

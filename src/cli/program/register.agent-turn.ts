@@ -139,7 +139,10 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
     .option("--isolated", "Ignore the ambient config and run against exec defaults only", false)
     .option("--model <provider/model>", "Use an explicit primary model for this run")
     .option("--code-mode <mode>", "Tool mode: direct | auto | code")
-    .option("--local-model-lean", "Use the reduced local-model tool surface")
+    .option(
+      "--agent-profile <id>",
+      "Agent Profile: auto | openclaw/base | openclaw/small | openclaw/medium | openclaw/large",
+    )
     .option(
       "--thinking <level>",
       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
@@ -168,8 +171,8 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
             "Use an explicit fallback chain and JSON output.",
           ],
           [
-            'openclaw agent exec "Inspect this repo" --model ollama/qwen3.5:9b --code-mode code --local-model-lean --json',
-            "Force Code Mode with the lean local-model tool surface.",
+            'openclaw agent exec "Inspect this repo" --model ollama/qwen3.5:9b --code-mode code --agent-profile openclaw/small --json',
+            "Force Code Mode with the small-model Agent Profile.",
           ],
         ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/agent#agent-exec", "docs.openclaw.ai/cli/agent#agent-exec")}`,
     )

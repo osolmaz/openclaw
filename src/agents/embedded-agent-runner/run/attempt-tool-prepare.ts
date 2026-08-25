@@ -11,14 +11,11 @@ import {
 import { extractModelCompat } from "../../../plugins/provider-model-compat.js";
 import { getPluginToolMeta } from "../../../plugins/tools.js";
 import { isSubagentSessionKey } from "../../../routing/session-key.js";
+import { resolveAgentProfile, resolveAgentProfilePreserveToolNames } from "../../agent-profiles.js";
 import { createOpenClawCodingTools } from "../../agent-tools.js";
 import { getChannelAgentToolMeta } from "../../channel-tools.js";
 import type { CodeModeSkill } from "../../code-mode-skills.js";
 import { resolveConversationCapabilityProfile } from "../../conversation-capability-profile.js";
-import {
-  isLocalModelLeanEnabled,
-  resolveLocalModelLeanPreserveToolNames,
-} from "../../local-model-lean.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { supportsModelTools } from "../../model-tool-support.js";
 import type { SandboxContext } from "../../sandbox/types.js";
@@ -95,6 +92,13 @@ export function prepareEmbeddedAttemptToolBase(params: {
     toolsEnabled,
     toolsAllow: toolsAllowWithForcedRuntimeTools,
   });
+  const agentProfile = resolveAgentProfile({
+    config: attempt.config,
+    agentId: params.sessionAgentId,
+    sessionKey: attempt.sessionKey,
+    modelProvider: attempt.provider,
+    modelId: attempt.modelId,
+  });
   const {
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
     toolSearchConfig,
@@ -104,6 +108,9 @@ export function prepareEmbeddedAttemptToolBase(params: {
     config: attempt.config,
     agentId: params.sessionAgentId,
     sessionKey: params.sandboxSessionKey,
+    modelProvider: attempt.provider,
+    modelId: attempt.modelId,
+    resolvedProfile: agentProfile,
     forceDirectMessageTool,
     model: attempt.model,
     toolsEnabled,
@@ -211,12 +218,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
     scheduledToolPolicy: attempt.scheduledToolPolicy,
     pluginMetadataSnapshot: attempt.preparedModelRuntime?.metadataSnapshot,
   });
-  const localModelLeanEnabled = isLocalModelLeanEnabled({
-    config: attempt.config,
-    agentId: params.sessionAgentId,
-    sessionKey: attempt.sessionKey,
-  });
-  const localModelLeanPreserveToolNames = resolveLocalModelLeanPreserveToolNames({
+  const agentProfilePreserveToolNames = resolveAgentProfilePreserveToolNames({
     toolNames: runtimeCapabilityProfile.policy.explicitToolOverrideAllowlist,
     forceMessageTool: attempt.forceMessageTool,
     sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
@@ -244,6 +246,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
     : (() => {
         const allTools = createOpenClawCodingTools({
           agentId: params.sessionAgentId,
+          resolvedAgentProfile: agentProfile,
           ...buildEmbeddedAttemptToolRunContext({ ...attempt, trace: params.runTrace }),
           messageChannel: attempt.messageChannel,
           clientCaps: attempt.clientCaps,
@@ -398,8 +401,8 @@ export function prepareEmbeddedAttemptToolBase(params: {
     effectiveToolsAllow,
     forceDirectMessageTool,
     inheritedToolAllowlist,
-    localModelLeanEnabled,
-    localModelLeanPreserveToolNames,
+    agentProfile,
+    agentProfilePreserveToolNames,
     replaySafetyOptions,
     runtimeCapabilityProfile,
     runCleanups,

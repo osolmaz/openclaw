@@ -53,8 +53,8 @@ export const SETUP_INFERENCE_TEST_PROMPT = "Reply with the single word OK. Do no
 
 const PROVIDER_AUTO_SETUP_KIND_PREFIX = "provider-auto:";
 
-export const AUTO_LOCAL_MODEL_LEAN_ANNOUNCEMENT =
-  "This model is small, so I set up the lean surface — switching to a bigger model later lifts it.";
+export const AUTO_AGENT_PROFILE_ANNOUNCEMENT =
+  "This model uses the openclaw/small Agent Profile; changing to a larger model can select a different profile.";
 
 export type ProviderAutoSetupInferenceKind = `provider-auto:${string}`;
 

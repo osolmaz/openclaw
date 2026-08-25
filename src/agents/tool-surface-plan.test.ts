@@ -68,6 +68,24 @@ describe("resolveAgentToolSurfacePlan", () => {
     expect(plan.codeModeControlsEnabled && plan.toolSearchControlsEnabled).toBe(false);
   });
 
+  it("enables Tool Search for the automatically selected Qwen profile", () => {
+    const plan = resolveAgentToolSurfacePlan({
+      ...basePlanParams,
+      config: {},
+      modelProvider: "llama-cpp",
+      modelId: "qwen3.6-35b-a3b",
+    });
+
+    expect(plan.codeModeControlsEnabled).toBe(false);
+    expect(plan.toolSearchControlsEnabled).toBe(true);
+    expect(plan.toolSearchConfig).toMatchObject({
+      enabled: true,
+      mode: "tools",
+      searchDefaultLimit: 5,
+      maxSearchLimit: 10,
+    });
+  });
+
   it("preserves Code Mode controls for a checkpoint-proven restart recovery", () => {
     const config: OpenClawConfig = {
       tools: { codeMode: false, toolSearch: true },

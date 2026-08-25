@@ -44,8 +44,8 @@ Design principles (decided, do not relitigate casually):
   pass. It never re-applies setup and never restarts the Gateway service.
 - **The terminal is the fallback, not a question**: prefer the browser
   dashboard when the Gateway can serve it; never ask "terminal or browser?".
-- **Weak models get a trimmed surface** (auto `localModelLean`), explained in
-  plain words — never in terms of tools, code mode, or context windows.
+- **Weak models get a trimmed surface** (`openclaw/small`), explained in plain
+  words — never in terms of tools, code mode, or context windows.
 
 ## Current shipped flow (after phases 1-3)
 
@@ -234,7 +234,7 @@ Remote-gateway onboarding keeps its legacy conversational handoff
 - Channels: day-to-day invisible (the agent relays); reachable by explicit
   summon and on agent-down events in the same thread, with its own name and
   claw avatar where the platform allows.
-- Weak model detected at setup: auto-set `localModelLean`, and the custodian
+- Weak model detected at setup: auto-select `openclaw/small`, and the custodian
   says so in plain words with an upgrade offer.
 - The custodian knows its internal nickname ("some folks call me the
   custodian — OpenClaw's fine") and always refers to the agent by name.
@@ -263,8 +263,8 @@ Remaining follow-ups from phases 4-6 (tracked, unscheduled): avatar/image-gen
 ladder for the hatch; macOS app rendering of the typed `question` field; a
 docked inline Settings pane for the custodian (needs shared conversation-view
 extraction); event-reactive commentary and channel summon/agent-down recovery
-(phase 6 PR2); automatic `localModelLean` for weak models; whether existing
-users' saved sidebar pins should adopt the OpenClaw entry.
+(phase 6 PR2); automatic Agent Profile selection for weak models; whether
+existing users' saved sidebar pins should adopt the OpenClaw entry.
 
 The macOS app now follows the same browser-first principle: native onboarding
 ends once inference verifies (install + AI setup pages), and Finish opens the

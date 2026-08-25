@@ -122,7 +122,7 @@ export type OpenClawConfig = {
     lastRunCommit?: string;
     lastRunCommand?: string;
     lastRunMode?: "local" | "remote";
-    localModelLeanAutoModel?: string;
+    agentProfileAutoModel?: string;
     securityAcknowledgedAt?: string;
   };
   /** Diagnostics, tracing, and stability debugging settings. */

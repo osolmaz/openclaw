@@ -7,7 +7,7 @@ import { resolveAgentToolSearchRuntimeConfig } from "./tool-search-runtime-confi
 function createRuntimeConfigPair() {
   const sourceConfig = {
     agents: {
-      defaults: { experimental: { localModelLean: true } },
+      defaults: { agentProfileId: "openclaw/small" },
       entries: { main: { default: true } },
     },
     plugins: {
