@@ -850,6 +850,25 @@ describe("createCopilotToolBridge", () => {
       });
     });
 
+    it("forwards the profile selected from trusted model-size metadata", async () => {
+      const { createOpenClawCodingTools, getOpts } = captureCall();
+
+      await createCopilotToolBridge({
+        attemptParams: {
+          config: {},
+          model: { modelSizeClass: "small" },
+        } as never,
+        createOpenClawCodingTools,
+        modelId: "unbound-model",
+        modelProvider: "github-copilot",
+      });
+
+      expect(getOpts().resolvedAgentProfile).toMatchObject({
+        profile: { id: "openclaw/small" },
+        selectionSource: "model-size",
+      });
+    });
+
     it("falls back messageProvider to attemptParams.messageChannel when messageProvider is absent (codex parity)", async () => {
       const { createOpenClawCodingTools, getOpts } = captureCall();
 

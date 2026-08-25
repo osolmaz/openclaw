@@ -456,6 +456,7 @@ function buildOpenClawCodingToolsOptions(
     abortSignal: input.abortSignal,
     modelProvider: input.modelProvider,
     modelId: input.modelId,
+    resolvedAgentProfile: toolSurfaceRuntime?.agentProfile,
     includeCoreTools: toolPlan.includeCoreTools,
     includeToolSearchControls: toolSurfaceRuntime?.includeToolSearchControls,
     toolSearchCatalogRef: toolSurfaceRuntime?.toolSearchCatalogRef,
