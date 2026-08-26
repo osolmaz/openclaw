@@ -2,6 +2,7 @@
 import type { FastMode } from "@openclaw/normalization-core/string-coerce";
 import type { SilentReplyPolicyShape } from "../shared/silent-reply-policy.js";
 import type { AgentProfileSelector } from "./agent-profile-ids.js";
+import type { ContextSerialization } from "./context-serialization.js";
 import type {
   AgentModelConfig,
   AgentToolModelConfig,
@@ -185,6 +186,8 @@ export type AgentDefaultsConfig = {
   bootstrapTotalMaxChars?: number;
   /** Agent Profile selector. Omitted uses automatic registry selection. */
   agentProfileId?: AgentProfileSelector;
+  /** Provider-neutral conversation context serialization mode. */
+  contextSerialization?: ContextSerialization;
   /**
    * Agent-visible bootstrap truncation warning mode:
    * - off: do not inject warning text

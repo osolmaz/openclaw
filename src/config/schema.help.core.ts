@@ -297,6 +297,10 @@ export const CORE_FIELD_HELP: Record<string, string> = {
     "Per-agent override for max total characters across all workspace bootstrap files injected into this agent's system prompt. Omit to inherit agents.defaults.bootstrapTotalMaxChars.",
   "agents.entries.*.agentProfileId":
     'Per-agent Agent Profile selector. Use "auto" for model bindings or a registered profile id for an explicit override.',
+  "agents.entries.*.contextSerialization":
+    'Per-agent conversation context serialization. Use "default" for current behavior or "lean" to remove redundant model-visible context.',
+  "agents.defaults.contextSerialization":
+    'Default conversation context serialization. Use "default" for current behavior or "lean" to remove redundant model-visible context.',
   "agents.defaults.contextLimits":
     "Focused per-agent-context budget defaults for selected high-volume excerpts and injected prompt blocks. Use this to tune bounded read/injection sizes without reopening any unbounded call paths.",
   "agents.defaults.contextLimits.memoryGetMaxChars":

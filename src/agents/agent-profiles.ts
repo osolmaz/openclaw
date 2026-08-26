@@ -3,6 +3,7 @@ import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { AgentProfileId, AgentProfileSelector } from "../config/agent-profile-ids.js";
+import type { ContextSerialization } from "../config/context-serialization.js";
 import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
@@ -29,6 +30,7 @@ type BuiltInAgentProfile = {
     common: {
       systemPrompt?: AgentProfileSystemPrompt;
       thinkingLevel?: AgentProfileThinkingLevel;
+      contextSerialization?: ContextSerialization;
     };
     "openclaw.ai"?: {
       toolProfile?: "lean";
@@ -68,7 +70,10 @@ const BUILT_IN_AGENT_PROFILES: readonly BuiltInAgentProfile[] = [
     id: "openclaw/small",
     extends: "openclaw/base",
     spec: {
-      common: { systemPrompt: { text: SMALL_AGENT_SYSTEM_PROMPT } },
+      common: {
+        systemPrompt: { text: SMALL_AGENT_SYSTEM_PROMPT },
+        contextSerialization: "lean",
+      },
       "openclaw.ai": { toolProfile: "lean" },
     },
   },

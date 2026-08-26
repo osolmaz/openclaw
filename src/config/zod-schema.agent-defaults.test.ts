@@ -27,6 +27,23 @@ function expectSchemaFailurePath(result: SchemaParseResult, expectedPathPrefix: 
 }
 
 describe("agent defaults schema", () => {
+  it("accepts context serialization on defaults and agent entries", () => {
+    expect(AgentDefaultsSchema.parse({ contextSerialization: "lean" })?.contextSerialization).toBe(
+      "lean",
+    );
+    expect(
+      AgentEntrySchema.parse({ id: "ops", contextSerialization: "default" }).contextSerialization,
+    ).toBe("default");
+    expectSchemaFailurePath(
+      AgentDefaultsSchema.safeParse({ contextSerialization: "compact" }),
+      "contextSerialization",
+    );
+    expectSchemaFailurePath(
+      AgentEntrySchema.safeParse({ id: "ops", contextSerialization: "compact" }),
+      "contextSerialization",
+    );
+  });
+
   it("accepts utility models on defaults and agent entries", () => {
     const defaults = AgentDefaultsSchema.parse({ utilityModel: "openai/gpt-5.4-mini" })!;
     const agent = AgentEntrySchema.parse({

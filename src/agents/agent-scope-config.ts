@@ -72,6 +72,7 @@ export type ResolvedAgentConfig = {
   bootstrapMaxChars?: AgentEntry["bootstrapMaxChars"];
   bootstrapTotalMaxChars?: AgentEntry["bootstrapTotalMaxChars"];
   agentProfileId?: AgentEntry["agentProfileId"];
+  contextSerialization?: AgentEntry["contextSerialization"];
   skills?: AgentEntry["skills"];
   memory?: AgentEntry["memory"];
   humanDelay?: AgentEntry["humanDelay"];
@@ -359,6 +360,7 @@ export function resolveAgentConfig(
     bootstrapMaxChars: entry.bootstrapMaxChars,
     bootstrapTotalMaxChars: entry.bootstrapTotalMaxChars,
     agentProfileId: entry.agentProfileId,
+    contextSerialization: entry.contextSerialization,
     skills: Array.isArray(entry.skills) ? entry.skills : undefined,
     memory: entry.memory,
     humanDelay: entry.humanDelay,

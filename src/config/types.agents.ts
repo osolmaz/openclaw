@@ -122,6 +122,8 @@ export type AgentConfig = {
   bootstrapTotalMaxChars?: AgentDefaultsConfig["bootstrapTotalMaxChars"];
   /** Optional per-agent Agent Profile selector. */
   agentProfileId?: AgentDefaultsConfig["agentProfileId"];
+  /** Optional per-agent conversation context serialization mode. */
+  contextSerialization?: AgentDefaultsConfig["contextSerialization"];
   /** Optional allowlist of skills for this agent; omitting it inherits agents.defaults.skills when set, and an explicit list replaces defaults instead of merging. */
   skills?: string[];
   /** Per-agent overrides for the shared top-level memory configuration. */
