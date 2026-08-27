@@ -26,6 +26,11 @@ import {
 import { createAgentHarnessToolSurfaceRuntime } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
 import { toStringifiedError as toCopilotToolError } from "openclaw/plugin-sdk/error-runtime";
 import { isRawCopilotModelRun } from "./attempt-mode.js";
+import {
+  findDuplicateToolNames,
+  hasNonWildcardGlobAllowlist,
+  readInlinePluginToolMeta,
+} from "./tool-bridge-helpers.js";
 
 type CreateOpenClawCodingTools =
   (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingTools"];
@@ -887,30 +892,4 @@ function filterCopilotToolsForConstructionPlan<T extends { name: string }>(
     }
     return true;
   });
-}
-
-function hasNonWildcardGlobAllowlist(toolsAllow: string[] | undefined): boolean {
-  return (toolsAllow ?? []).some((entry) => {
-    const trimmed = entry.trim();
-    return trimmed !== "*" && trimmed.includes("*");
-  });
-}
-
-function readInlinePluginToolMeta(tool: { name: string }): { pluginId: string } | undefined {
-  const pluginId = (tool as { pluginId?: unknown }).pluginId;
-  return typeof pluginId === "string" && pluginId.trim() ? { pluginId } : undefined;
-}
-
-function findDuplicateToolNames(sourceTools: AnyAgentTool[]): string[] {
-  const counts = new Map<string, number>();
-  for (const sourceTool of sourceTools) {
-    if (typeof sourceTool.name !== "string" || sourceTool.name.length === 0) {
-      continue;
-    }
-    counts.set(sourceTool.name, (counts.get(sourceTool.name) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .filter(([, count]) => count > 1)
-    .map(([name]) => name)
-    .toSorted();
 }
