@@ -160,7 +160,12 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
     }
   };
   const rebuildPromptBodies = () => {
-    const { activeGoalContext, inboundUserContext } = context.getInboundContext();
+    const {
+      activeGoalContext,
+      inboundUserContext,
+      leanInboundUserContext,
+      leanInboundContextStats,
+    } = context.getInboundContext();
     return buildReplyPromptEnvelope({
       ctx,
       sessionCtx,
@@ -168,6 +173,8 @@ export async function prepareReplyRunAdmission(context: PreparedReplyRunContext)
       prefixedBody: prefixedBodyCore,
       hasUserBody,
       inboundUserContext,
+      leanInboundUserContext,
+      leanInboundContextStats,
       activeGoalContext,
       inboundUserContextPromptJoiner,
       isBareSessionReset,

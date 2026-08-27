@@ -493,7 +493,15 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     getSessionEntry: () => sessionEntry,
     isMainSession,
     inboundUserContextPromptJoiner,
-    getInboundContext: () => ({ activeGoalContext, inboundUserContext }),
+    getInboundContext: () => ({
+      activeGoalContext,
+      inboundUserContext,
+      leanInboundUserContext: leanInboundContext.text,
+      leanInboundContextStats: {
+        removedSessionMessages: leanInboundContext.removedSessionMessages,
+        deduplicatedMessages: leanInboundContext.deduplicatedMessages,
+      },
+    }),
     refreshInboundContextAfterAdmissionWait,
     allowEmptyAssistantReplyAsSilent,
     terminalReplyExpectation,
