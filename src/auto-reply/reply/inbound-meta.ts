@@ -755,10 +755,10 @@ export function buildLeanInboundUserContextPrefix(
       continue;
     }
     blocks.push(
-      `${sanitizeTranscriptField(entry.label) ?? "Channel context"}: ${JSON.stringify({
+      formatContextJsonBlock(`${sanitizeTranscriptField(entry.label) ?? "Channel context"}:`, {
         type: normalizePromptMetadataString(entry.type),
         payload: entry.payload,
-      })}`,
+      }),
     );
   }
 

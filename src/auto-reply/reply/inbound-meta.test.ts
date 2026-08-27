@@ -1589,6 +1589,25 @@ describe("buildInboundUserContextPrefix", () => {
     expect(projection.removedSessionMessages).toBe(1);
   });
 
+  it("bounds non-chat structured context in lean mode", () => {
+    const oversized = `prefix-${"x".repeat(2_500)}-suffix-\`\`\``;
+    const projection = buildLeanInboundUserContextPrefix({
+      ChannelStructuredContext: [
+        {
+          label: "Plugin context",
+          source: "plugin",
+          type: "plugin_payload",
+          payload: { detail: oversized },
+        },
+      ],
+    } as TemplateContext);
+
+    expect(projection.text).toContain("Plugin context:\n```json");
+    expect(projection.text).toContain("…[truncated]");
+    expect(projection.text).not.toContain("suffix-");
+    expect(projection.text).not.toContain(oversized);
+  });
+
   it("preserves a false mention state in group context", () => {
     const projection = buildLeanInboundUserContextPrefix({
       ChatType: "group",
