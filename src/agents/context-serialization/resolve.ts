@@ -3,7 +3,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { ResolvedAgentProfile } from "../agent-profiles.js";
 import { resolveAgentConfig } from "../agent-scope-config.js";
 
-export type ContextSerializationSource =
+type ContextSerializationSource =
   | "agent-explicit"
   | "defaults-explicit"
   | "agent-profile"

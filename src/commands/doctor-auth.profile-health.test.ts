@@ -177,7 +177,9 @@ describe("noteAuthProfileHealth", () => {
     });
 
     expect(
-      findings.map((finding) => finding.target).toSorted((a, b) => a.localeCompare(b)),
+      findings
+        .map((finding) => finding.target)
+        .toSorted((a, b) => (a ?? "").localeCompare(b ?? "")),
     ).toEqual(["anthropic:custom-cli", "anthropic:static-cli"]);
   });
 
