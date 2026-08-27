@@ -516,6 +516,24 @@ describe("runtime context prompt submission", () => {
     });
   });
 
+  it("uses lean serialization for runtime-only events when selected", () => {
+    const parts = resolveRuntimeContextPromptParts({
+      effectivePrompt: "internal event",
+      transcriptPrompt: "",
+      serialization: { mode: "lean", source: "agent-profile" },
+    });
+
+    expect(parts.runtimeSystemContext).toBe(
+      [
+        "OpenClaw runtime event.",
+        "<<<BEGIN_OPENCLAW_INTERNAL_CONTEXT>>>",
+        "internal event",
+        "<<<END_OPENCLAW_INTERNAL_CONTEXT>>>",
+      ].join("\n"),
+    );
+    expect(parts.runtimeSystemContext).not.toContain("not user-authored");
+  });
+
   it("keeps runtime-only hook context in the model prompt", () => {
     const parts = resolveRuntimeContextPromptParts({
       effectivePrompt: "internal event",

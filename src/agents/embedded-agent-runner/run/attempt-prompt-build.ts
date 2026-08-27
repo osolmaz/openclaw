@@ -587,6 +587,7 @@ export function prepareEmbeddedAttemptPromptContext(input: {
     emptyTranscriptMode: attempt.suppressNextUserMessagePersistence
       ? "model-prompt"
       : "runtime-event",
+    serialization: contextSerialization,
   });
   const isRuntimeOnlyTurn = promptSubmission.runtimeOnly === true;
   const inboundProjection = selectCurrentInboundContext({

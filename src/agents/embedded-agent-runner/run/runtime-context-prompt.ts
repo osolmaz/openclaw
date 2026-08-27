@@ -124,6 +124,7 @@ export function resolveRuntimeContextPromptParts(params: {
   modelPrompt?: string;
   modelPromptBuildContext?: ModelPromptBuildContext;
   emptyTranscriptMode?: EmptyTranscriptMode;
+  serialization?: ResolvedContextSerialization;
 }): RuntimeContextPromptParts {
   const transcriptPrompt = params.transcriptPrompt;
   const shouldExtractInternalRuntimeContext = transcriptPrompt !== undefined;
@@ -212,7 +213,7 @@ export function resolveRuntimeContextPromptParts(params: {
           runtimeSystemContext: serializeRuntimeContext({
             runtimeContext,
             kind: "runtime-event",
-            mode: "default",
+            mode: params.serialization?.mode ?? "default",
           }),
         }
       : {
