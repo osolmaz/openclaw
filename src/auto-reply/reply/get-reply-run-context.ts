@@ -42,6 +42,7 @@ import { hasInboundMedia } from "./inbound-media.js";
 import {
   buildInboundMetaSystemPrompt,
   buildInboundUserContextPrefix,
+  buildLeanInboundUserContextPrefix,
   formatActiveGoalContext,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
@@ -395,6 +396,9 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
         envelopeOptions,
         inboundContextSessionEntry,
       );
+  let leanInboundContext = isHeartbeat
+    ? { text: "", removedSessionMessages: 0, deduplicatedMessages: 0 }
+    : buildLeanInboundUserContextPrefix(inboundUserContextSessionCtx, inboundContextSessionEntry);
   const refreshInboundContextAfterAdmissionWait = async () => {
     if (isHeartbeat) {
       return;
@@ -409,6 +413,10 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
       envelopeOptions,
       inboundContextSessionEntry,
     );
+    leanInboundContext = buildLeanInboundUserContextPrefix(
+      inboundUserContextSessionCtx,
+      inboundContextSessionEntry,
+    );
   };
   const inboundUserContextPromptJoiner = resolveInboundUserContextPromptJoiner(sessionCtx);
   const promptEnvelopeBase = buildReplyPromptEnvelopeBase({
@@ -417,6 +425,11 @@ export async function prepareReplyRunContext(params: RunPreparedReplyParams) {
     baseBody: baseBodyFinal,
     hasUserBody,
     inboundUserContext,
+    leanInboundUserContext: leanInboundContext.text,
+    leanInboundContextStats: {
+      removedSessionMessages: leanInboundContext.removedSessionMessages,
+      deduplicatedMessages: leanInboundContext.deduplicatedMessages,
+    },
     activeGoalContext,
     inboundUserContextPromptJoiner,
     isBareSessionReset,

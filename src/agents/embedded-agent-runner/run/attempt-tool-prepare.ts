@@ -15,6 +15,7 @@ import { resolveAgentProfile, resolveAgentProfilePreserveToolNames } from "../..
 import { createOpenClawCodingTools } from "../../agent-tools.js";
 import { getChannelAgentToolMeta } from "../../channel-tools.js";
 import type { CodeModeSkill } from "../../code-mode-skills.js";
+import { resolveContextSerialization } from "../../context-serialization/resolve.js";
 import { resolveConversationCapabilityProfile } from "../../conversation-capability-profile.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { supportsModelTools } from "../../model-tool-support.js";
@@ -99,6 +100,11 @@ export function prepareEmbeddedAttemptToolBase(params: {
     modelProvider: attempt.provider,
     modelId: attempt.modelId,
     modelSizeClass: attempt.model.modelSizeClass,
+  });
+  const contextSerialization = resolveContextSerialization({
+    config: attempt.config,
+    agentId: params.sessionAgentId,
+    resolvedProfile: agentProfile,
   });
   const {
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
@@ -398,6 +404,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
     codeModeControlsEnabledForRun,
     codeModeSkills,
     computerContextEpoch,
+    contextSerialization,
     cronCreatorToolAllowlist,
     cronCreatorToolAllowlistCaptureRef,
     effectiveToolsAllow,

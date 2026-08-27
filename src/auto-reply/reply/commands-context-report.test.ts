@@ -30,6 +30,9 @@ function makeParams(
     storePath?: string;
     agentId?: string;
     currentTurn?: NonNullable<SessionEntry["systemPromptReport"]>["currentTurn"];
+    contextSerialization?: NonNullable<
+      NonNullable<SessionEntry["systemPromptReport"]>["contextSerialization"]
+    >;
     nativeUnverified?: boolean;
   },
 ): HandleCommandsParams {
@@ -69,6 +72,9 @@ function makeParams(
           nonProjectContextChars: 500,
         },
         ...(options?.currentTurn ? { currentTurn: options.currentTurn } : {}),
+        ...(options?.contextSerialization
+          ? { contextSerialization: options.contextSerialization }
+          : {}),
         injectedWorkspaceFiles: options?.nativeUnverified
           ? [
               {
@@ -236,6 +242,29 @@ describe("buildContextReply", () => {
       "Compactable transcript: unavailable (no active transcript session)",
     );
     expect(result.text).toContain("Session tokens (cached): 900 total / ctx=8,192");
+  });
+
+  it("shows lean context serialization diagnostics without raw content", async () => {
+    const result = await buildContextReply(
+      makeParams("/context detail", false, {
+        contextSerialization: {
+          mode: "lean",
+          source: "agent-profile",
+          defaultChars: 1_049,
+          serializedChars: 287,
+          removedSessionMessages: 5,
+          deduplicatedMessages: 1,
+          providerInputTokens: 834,
+        },
+      }),
+    );
+
+    expect(result.text).toContain("Context serialization: lean (agent-profile)");
+    expect(result.text).toContain(
+      "Inbound context: 287 chars from 1,049 default chars; removed 5 transcript duplicate(s) and 1 duplicate history item(s)",
+    );
+    expect(result.text).toContain("Provider input tokens (turn): 834");
+    expect(result.text).not.toContain("private message");
   });
 
   it("reports compactable real conversation messages from the active transcript", async () => {

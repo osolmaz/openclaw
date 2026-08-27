@@ -257,6 +257,10 @@ export async function runEmbeddedAttemptPromptPhase(input: {
       ...input.context,
     });
     const { hookMessagesForCurrentPrompt, promptForModel, systemPromptForHook } = promptContext;
+    input.observation.trajectoryRecorder?.recordEvent(
+      "context.serialization",
+      promptContext.contextSerializationReport,
+    );
     input.lifecycle.setPrePromptMessageCount(promptContext.prePromptMessageCount);
     input.lifecycle.setCurrentUserTimestampOverride(promptContext.currentUserTimestampOverride);
     const beforeAgentRunOutcome =

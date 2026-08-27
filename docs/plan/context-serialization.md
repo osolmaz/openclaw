@@ -9,7 +9,7 @@ read_when:
 
 ## Status
 
-Approved for implementation. This plan records the first production release of configurable context serialization. The implementation is pending.
+Implemented locally on the Agent Profiles feature branch. Focused verification and the target-Qwen rollout gates pass. Review and CI are still required before delivery.
 
 ## Problem
 
@@ -52,10 +52,10 @@ OpenClaw accepts the setting at the default and per-agent levels:
 
 Allowed values are:
 
-| Value     | Behavior                                                                                         |
-| --------- | ------------------------------------------------------------------------------------------------ |
-| `default` | Preserve the current provider-visible context behavior.                                          |
-| `lean`    | Send the smallest supported context that preserves required conversation and tool behavior.      |
+| Value     | Behavior                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------- |
+| `default` | Preserve the current provider-visible context behavior.                                     |
+| `lean`    | Send the smallest supported context that preserves required conversation and tool behavior. |
 
 Missing configuration resolves to `default`. An explicit `default` is a real value. It does not mean “inherit.”
 
@@ -200,6 +200,45 @@ The proposed minimum worthwhile effects are:
 
 A capability failure vetoes token savings. If a measured difference misses a threshold or remains uncertain, keep the simpler safe behavior for that case.
 
+### Target-Qwen result
+
+The opt-in benchmark builds the final OpenAI Chat Completions request, applies
+the running model's chat template, and counts that prompt with the same
+llama.cpp tokenizer. It does not infer tokens from characters.
+
+Provenance:
+
+- model: `qwen3.6-35b-a3b`;
+- model revision: `a483e9e6cbd595906af30beda3187c2663a1118c`;
+- file: `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`;
+- quantization: `Q4_K - Medium`;
+- llama.cpp build: `b10156-91f8c9c5f`;
+- observed path: llama.cpp `/apply-template` and `/tokenize`;
+- context window: 65,536 tokens;
+- slots: 4;
+- speculative decoding: none.
+
+Raw results:
+
+| Fixture          | `default` | `lean` | Absolute reduction | Relative reduction |
+| ---------------- | --------: | -----: | -----------------: | -----------------: |
+| Ordinary final   |       943 |    834 |                109 |              11.6% |
+| Fresh Discord    |     1,901 |  1,320 |                581 |              30.6% |
+| Multi-user reply |     1,035 |    913 |                122 |              11.8% |
+| Tool turn        |       960 |    851 |                109 |              11.4% |
+
+The ordinary fixture baseline is 774 tokens. The new turn grows it by 169
+tokens with `default` and 60 tokens with `lean`. The ordinary, fresh absolute,
+fresh relative, tool-turn, and zero-capability-failure gates all pass. This is a
+material result for the registered Qwen workload, so the small profile can
+select `lean`.
+
+Run the measurement again with:
+
+```bash
+node --import tsx scripts/benchmark-context-serialization.ts
+```
+
 ## Implementation steps
 
 1. Add `contextSerialization` to `src/config/types.agent-defaults.ts`, `src/config/types.agents.ts`, `src/config/zod-schema.agent-defaults.ts`, `src/config/zod-schema.agent-runtime.ts`, `src/config/schema.labels.ts`, and `src/config/schema.help.core.ts`. Add schema and help tests.
@@ -208,7 +247,7 @@ A capability failure vetoes token savings. If a measured difference misses a thr
 4. Set the built-in `openclaw/small` profile to `lean`. Keep its current prompt, tool profile, and Tool Search behavior. Enable this only after the measurement and capability gates pass.
 5. Add the provider-neutral modules under `src/agents/context-serialization/`. Route `default` through the old path first and require final-request parity.
 6. Add durable-identity deduplication between the active transcript and channel backlog. Keep entries when identity is weak or missing.
-7. Change Discord ingress to pass canonical facts and to stop replaying active-session messages into `InboundHistory` in `lean` mode. Keep absent backlog, speakers, replies, and threads.
+7. Keep the existing canonical session-history merge for `default`. At the shared serialization boundary, remove its `session:` entries from `lean` after their durable transcript ids prove their origin. This avoids a second profile resolver in Discord while keeping absent backlog, ambiguous entries, speakers, replies, and threads.
 8. Build the protected lean current-turn block from the allowlist. Keep escaping and injection tests.
 9. Preserve tool and delivery continuity through the serializer. Keep policy logic out of provider adapters.
 10. Add mode, source, size, deduplication, and provider-token diagnostics without private raw content.

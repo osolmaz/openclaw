@@ -16,12 +16,12 @@ context-window settings, or local serving configuration.
 
 ## Built-in profiles
 
-| Profile           | Parent          | Initial behavior                                   |
-| ----------------- | --------------- | -------------------------------------------------- |
-| `openclaw/base`   | none            | Standard OpenClaw behavior and fallback            |
-| `openclaw/small`  | `openclaw/base` | Minimum system prompt, lean tools, and Tool Search |
-| `openclaw/medium` | `openclaw/base` | Base behavior with a stable medium-model identity  |
-| `openclaw/large`  | `openclaw/base` | Base behavior with a stable large-model identity   |
+| Profile           | Parent          | Initial behavior                                                        |
+| ----------------- | --------------- | ----------------------------------------------------------------------- |
+| `openclaw/base`   | none            | Standard OpenClaw behavior and fallback                                 |
+| `openclaw/small`  | `openclaw/base` | Minimum prompt, lean tools, Tool Search, and lean context serialization |
+| `openclaw/medium` | `openclaw/base` | Base behavior with a stable medium-model identity                       |
+| `openclaw/large`  | `openclaw/base` | Base behavior with a stable large-model identity                        |
 
 ## Automatic selection
 
@@ -94,6 +94,27 @@ Override one agent:
 }
 ```
 
+Set context serialization independently of the selected profile:
+
+```json5
+{
+  agents: {
+    defaults: {
+      contextSerialization: "lean",
+    },
+    entries: {
+      fullContext: {
+        contextSerialization: "default",
+      },
+    },
+  },
+}
+```
+
+Per-agent configuration overrides default configuration. Default configuration
+overrides the selected profile. If none sets the value, OpenClaw uses
+`default`.
+
 ## Small profile behavior
 
 `openclaw/small` replaces the standard OpenClaw system prompt with a built-in
@@ -115,11 +136,23 @@ configuration always wins.
 The profile keeps `exec` directly visible. Normal tool policy, sandboxing, and
 exec approvals still apply.
 
+The profile selects `contextSerialization: "lean"`. Lean serialization removes
+active-session copies from channel history only when their durable message IDs
+prove that they are duplicates. It keeps unmatched backlog, ambiguous entries,
+speaker attribution, reply and thread facts, mentions, delivery facts, tool
+calls, and tool results. It also replaces the verbose current-turn metadata
+wrapper with a short protected block. Set `contextSerialization: "default"` in
+normal config to keep the previous representation while using the other small
+profile behavior.
+
 ## Diagnostics
 
 `/context detail` and `/context json` include the selected profile id and
 selection source in the stored system-prompt report. They also show the direct
-tool schemas used for the request.
+tool schemas used for the request. Detailed context reports show the context
+serialization value and source, default and serialized character counts,
+durable-ID removal counts, and provider input tokens when the provider reports
+them. Reports do not include private message content.
 
 ## Legacy migration
 
