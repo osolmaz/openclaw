@@ -178,7 +178,13 @@ function createFixture() {
       runAbortSignal: new AbortController().signal,
     },
     contextGuards: { computerContextEpoch: { value: 0 } },
-    trajectory: { effectiveToolCount: 4, localModelLeanEnabled: false },
+    trajectory: {
+      effectiveToolCount: 4,
+      agentProfile: {
+        profile: { id: "openclaw/base", ancestry: ["openclaw/base"], spec: { common: {} } },
+        selectionSource: "fallback",
+      },
+    },
     transport: {
       abortSignal: new AbortController().signal,
       codeModeControlsEnabled: false,

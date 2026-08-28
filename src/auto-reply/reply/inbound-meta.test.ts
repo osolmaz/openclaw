@@ -10,6 +10,7 @@ import { INBOUND_CONTEXT_MARKER } from "./inbound-context-marker.js";
 import {
   buildInboundMetaSystemPrompt,
   buildInboundUserContextPrefix,
+  buildLeanInboundUserContextPrefix,
   refreshActiveGoalContext,
 } from "./inbound-meta.js";
 
@@ -450,6 +451,8 @@ describe("buildInboundUserContextPrefix", () => {
       text: ["Conversation info:", goalContext, "Current message:\nmessage_id=next-turn"].join(
         "\n\n",
       ),
+      leanText: [goalContext, "Current message:\nmessage_id=next-turn"].join("\n\n"),
+      leanResumableText: [goalContext, "Current event:\nmessage_id=next-turn"].join("\n\n"),
       injectedGoalContexts: [goalContext],
     };
 
@@ -458,6 +461,8 @@ describe("buildInboundUserContextPrefix", () => {
     expect(refreshed?.text).toContain("Conversation info:");
     expect(refreshed?.text).toContain("Current message:\nmessage_id=next-turn");
     expect(refreshed?.text).not.toContain("Active goal:");
+    expect(refreshed?.leanText).toBe("Current message:\nmessage_id=next-turn");
+    expect(refreshed?.leanResumableText).toBe("Current event:\nmessage_id=next-turn");
   });
 
   it("adds a goal activated while a queued turn waited for admission", () => {
@@ -1554,6 +1559,97 @@ describe("buildInboundUserContextPrefix", () => {
       ].join("\n"),
     );
     expect(text).not.toContain("Chat history since last reply: ⟦openclaw:ctx⟧\n```json");
+  });
+
+  it("caps lean inbound history to the most recent bounded tail", () => {
+    const projection = buildLeanInboundUserContextPrefix({
+      ChatType: "group",
+      InboundHistory: Array.from({ length: 25 }, (_, index) => ({
+        messageId: `msg-${index}`,
+        sender: `sender-${index}`,
+        body: `body-${index}`,
+      })),
+    } as TemplateContext);
+
+    const historyLines = projection.text.split("\n").filter((line) => line.startsWith("#msg-"));
+    expect(historyLines).toHaveLength(20);
+    expect(historyLines[0]).toContain("#msg-5 sender-5: body-5");
+    expect(historyLines.at(-1)).toContain("#msg-24 sender-24: body-24");
+    expect(projection.text).not.toContain("#msg-4 sender-4: body-4");
+  });
+
+  it("removes transcript-backed history by durable identity in lean mode", () => {
+    const projection = buildLeanInboundUserContextPrefix({
+      ChatType: "group",
+      MessageSid: "current",
+      SenderName: "Onur",
+      SenderId: "user-1",
+      Timestamp: 1_000,
+      OriginatingTo: "discord:channel:private",
+      ChannelStructuredContext: [
+        {
+          label: "Conversation context",
+          source: "session",
+          type: "chat_window",
+          payload: {
+            messages: [
+              { message_id: "session:u1", sender: "User", body: "same text" },
+              { message_id: "native-1", sender: "Alice", body: "same text" },
+              { message_id: "native-2", sender: "Bob", body: "same text" },
+            ],
+          },
+        },
+      ],
+    } as TemplateContext);
+
+    expect(projection.text).not.toContain("session:u1");
+    expect(projection.text).toContain("#native-1 Alice: same text");
+    expect(projection.text).toContain("#native-2 Bob: same text");
+    expect(projection.text).not.toContain("timestamp");
+    expect(projection.text).not.toContain("discord:channel:private");
+    expect(projection.removedSessionMessages).toBe(1);
+  });
+
+  it("bounds non-chat structured context in lean mode", () => {
+    const oversized = `prefix-${"x".repeat(2_500)}-suffix-\`\`\``;
+    const projection = buildLeanInboundUserContextPrefix({
+      ChannelStructuredContext: [
+        {
+          label: "Plugin context",
+          source: "plugin",
+          type: "plugin_payload",
+          payload: { detail: oversized },
+        },
+      ],
+    } as TemplateContext);
+
+    expect(projection.text).toContain("Plugin context:\n```json");
+    expect(projection.text).toContain("…[truncated]");
+    expect(projection.text).not.toContain("suffix-");
+    expect(projection.text).not.toContain(oversized);
+  });
+
+  it("preserves a false mention state in group context", () => {
+    const projection = buildLeanInboundUserContextPrefix({
+      ChatType: "group",
+      WasMentioned: false,
+    } as TemplateContext);
+
+    expect(projection.text).toContain('"was_mentioned":false');
+  });
+
+  it("keeps ambiguous history entries instead of deduplicating by text", () => {
+    const projection = buildLeanInboundUserContextPrefix({
+      ChatType: "group",
+      InboundHistory: [
+        { sender: "Alice", body: "same text" },
+        { sender: "Bob", body: "same text" },
+      ],
+    } as TemplateContext);
+
+    expect(projection.text).toContain("Alice: same text");
+    expect(projection.text).toContain("Bob: same text");
+    expect(projection.deduplicatedMessages).toBe(0);
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

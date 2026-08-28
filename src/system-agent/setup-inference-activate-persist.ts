@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { AgentExecutionAuthBinding } from "../agents/execution-auth-binding.js";
-import { applyAutoLocalModelLean } from "../config/local-model-lean-auto.js";
+import { applyAutoAgentProfile } from "../config/agent-profile-auto.js";
 import { applyMergePatch } from "../config/merge-patch.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
@@ -46,7 +46,7 @@ type ProjectedInferenceRoute = Awaited<ReturnType<typeof projectInferenceRoute>>
 
 export type SetupInferenceActivationPersistenceState = {
   committedConfig: OpenClawConfig | undefined;
-  autoLocalModelLeanApplied: boolean;
+  autoAgentProfileApplied: boolean;
   codexInstallOwnership: "unknown" | "owned" | "unowned";
   gatewayRestartRequired: boolean;
 };
@@ -144,7 +144,7 @@ export async function persistActivatedSetupInference(input: {
       }
       next = enabledCodex.config;
     }
-    next = applyAutoLocalModelLean({
+    next = applyAutoAgentProfile({
       config: next,
       providerId: testPlan.provider,
       modelRef: plan.modelRef,
@@ -282,7 +282,7 @@ export async function persistActivatedSetupInference(input: {
             "The authored target model metadata changed during its live inference test, so the verified candidate was not saved. Review the current model settings and retry.",
           );
         }
-        const autoLocalModelLean = applyAutoLocalModelLean({
+        const autoAgentProfile = applyAutoAgentProfile({
           config: current,
           providerId: testPlan.provider,
           modelRef: plan.modelRef,
@@ -311,7 +311,7 @@ export async function persistActivatedSetupInference(input: {
         throwIfSetupInferenceCancelled(params);
         params.onCommitStarted?.(current);
         commitMayHaveStarted = true;
-        state.autoLocalModelLeanApplied = autoLocalModelLean.enabled;
+        state.autoAgentProfileApplied = autoAgentProfile.enabled;
         return { nextConfig };
       },
     });

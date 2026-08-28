@@ -239,12 +239,6 @@ describe("LabsPage", () => {
       note: "labs: update loopDetection",
     },
     {
-      label: "Lean tools for local models",
-      sourceConfig: {},
-      expectedPatch: { agents: { defaults: { experimental: { localModelLean: true } } } },
-      note: "labs: update localModelLean",
-    },
-    {
       label: "CLI agents",
       sourceConfig: {},
       expectedPatch: { gateway: { cliAgents: { enabled: true } } },
@@ -351,75 +345,6 @@ describe("LabsPage", () => {
     expect(overridden.page.querySelectorAll("button[aria-label='Reset to default']")).toHaveLength(
       0,
     );
-  });
-
-  it.each([{ model: "ollama/qwen3:8b" }, { model: { primary: "ollama/qwen3:8b", fallbacks: [] } }])(
-    "treats onboarding-owned local model lean as inherited for $model",
-    async ({ model }) => {
-      const { page } = await mountPage({
-        wizard: { localModelLeanAutoModel: "ollama/qwen3:8b" },
-        agents: {
-          defaults: {
-            model,
-            experimental: { localModelLean: true },
-          },
-        },
-      });
-      const row = labRow(page, "Lean tools for local models");
-
-      expect(row.textContent).toContain("Using default: Enabled");
-      expect(row.querySelector("button[aria-label='Reset to default']")).toBeNull();
-    },
-  );
-
-  it("releases onboarding ownership when local model lean is disabled", async () => {
-    const { page, runtimeConfig } = await mountPage({
-      wizard: { localModelLeanAutoModel: "ollama/qwen3:8b" },
-      agents: {
-        defaults: {
-          model: "ollama/qwen3:8b",
-          experimental: { localModelLean: true },
-        },
-      },
-    });
-    const toggle = labToggle(page, "Lean tools for local models");
-
-    toggle.checked = false;
-    toggle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-
-    await vi.waitFor(() => expect(runtimeConfig.patch).toHaveBeenCalledOnce());
-    expect(runtimeConfig.patch).toHaveBeenCalledWith({
-      raw: {
-        agents: { defaults: { experimental: { localModelLean: false } } },
-        wizard: { localModelLeanAutoModel: null },
-      },
-      note: "labs: update localModelLean",
-    });
-  });
-
-  it("clears a stale onboarding marker when restoring local model lean", async () => {
-    const { page, runtimeConfig } = await mountPage({
-      wizard: { localModelLeanAutoModel: "ollama/old-model" },
-      agents: {
-        defaults: {
-          model: "openai/gpt-5",
-          experimental: { localModelLean: true },
-        },
-      },
-    });
-
-    const toggle = labToggle(page, "Lean tools for local models");
-    toggle.checked = false;
-    toggle.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-
-    await vi.waitFor(() => expect(runtimeConfig.patch).toHaveBeenCalledOnce());
-    expect(runtimeConfig.patch).toHaveBeenCalledWith({
-      raw: {
-        agents: { defaults: { experimental: { localModelLean: null } } },
-        wizard: { localModelLeanAutoModel: null },
-      },
-      note: "labs: update localModelLean",
-    });
   });
 });
 

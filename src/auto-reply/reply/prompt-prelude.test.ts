@@ -59,6 +59,7 @@ describe("buildReplyPromptEnvelope", () => {
     expect(envelope.transcriptCommandBody).toBe("what changed?");
     expect(envelope.currentInboundContext).toEqual({
       text: "Current message:\nchat_id=C123",
+      leanText: "Current message:\nchat_id=C123",
       promptJoiner: " ",
     });
   });
@@ -195,6 +196,12 @@ describe("buildReplyPromptEnvelope", () => {
       ].join("\n\n"),
     );
     expect(envelope.currentInboundContext?.resumableText).not.toContain(
+      "Conversation context (chronological, selected for current message):",
+    );
+    expect(envelope.currentInboundContext?.leanResumableText).toBe(
+      envelope.currentInboundContext?.resumableText,
+    );
+    expect(envelope.currentInboundContext?.leanResumableText).not.toContain(
       "Conversation context (chronological, selected for current message):",
     );
   });

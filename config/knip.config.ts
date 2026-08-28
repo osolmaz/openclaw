@@ -146,6 +146,8 @@ const rootEntries = [
   "scripts/openclaw-cross-os-release-checks.ts!",
   "scripts/release-plan-producer-core.mts!",
   "scripts/release-plan-producer.mts!",
+  // Invoked directly by the context serialization benchmark plan.
+  "scripts/benchmark-context-serialization.ts!",
   // Spawned by the agent concurrency benchmark; no static import edge exists.
   "scripts/bench-agent-concurrency-worker.ts!",
   // Spawned by the durable task registry churn benchmark in a fresh GC-enabled process.

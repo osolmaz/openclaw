@@ -23,6 +23,11 @@ import type { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js
 import { annotateInterSessionPromptText } from "../../../sessions/input-provenance.js";
 import { resolveAdmittedRunActiveAssertion } from "../../admitted-run-context.js";
 import type { createCacheTrace } from "../../cache-trace.js";
+import {
+  selectCurrentInboundContext,
+  type ContextSerializationReport,
+} from "../../context-serialization/project.js";
+import type { ResolvedContextSerialization } from "../../context-serialization/resolve.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../defaults.js";
 import { describeProviderRequestRoutingSummary } from "../../provider-attribution.js";
 import type { AgentMessage } from "../../runtime/index.js";
@@ -461,6 +466,7 @@ type CurrentUserTimestampOverride = {
 type EmbeddedAttemptPromptContext = {
   aggregatePressureEngaged: boolean;
   contextTokenBudget: number;
+  contextSerializationReport: ContextSerializationReport;
   currentUserTimestampOverride?: CurrentUserTimestampOverride;
   effectivePrompt: string;
   hookMessagesForCurrentPrompt: AgentMessage[];
@@ -478,6 +484,7 @@ type EmbeddedAttemptPromptContext = {
 export function prepareEmbeddedAttemptPromptContext(input: {
   attempt: PromptContextAttempt;
   boundaryTimezone?: string;
+  contextSerialization?: ResolvedContextSerialization;
   includeBoundaryTimestamp: boolean;
   isRawModelRun: boolean;
   messages: AgentMessage[];
@@ -492,6 +499,10 @@ export function prepareEmbeddedAttemptPromptContext(input: {
   toolResultPromptProjectionState: ToolResultPromptProjectionState;
 }): EmbeddedAttemptPromptContext {
   const { attempt } = input;
+  const contextSerialization = input.contextSerialization ?? {
+    mode: "default",
+    source: "fallback",
+  };
   const preparedUserTurnTimestamp = (
     input.preparedUserTurnMessage as { timestamp?: unknown } | undefined
   )?.timestamp;
@@ -576,11 +587,16 @@ export function prepareEmbeddedAttemptPromptContext(input: {
     emptyTranscriptMode: attempt.suppressNextUserMessagePersistence
       ? "model-prompt"
       : "runtime-event",
+    serialization: contextSerialization,
   });
   const isRuntimeOnlyTurn = promptSubmission.runtimeOnly === true;
+  const inboundProjection = selectCurrentInboundContext({
+    context: attempt.currentInboundContext,
+    serialization: contextSerialization,
+  });
   const currentInboundContextText = isRuntimeOnlyTurn
     ? undefined
-    : attempt.currentInboundContext?.text?.trim() || undefined;
+    : inboundProjection.text.trim() || undefined;
   // Normal user turns persist the bare prompt and carry current inbound metadata
   // in a hidden runtime-context message. Runtime-only turns have no bare user turn,
   // so their inbound context remains inline and byte-stable across replay.
@@ -588,12 +604,14 @@ export function prepareEmbeddedAttemptPromptContext(input: {
     ? buildCurrentInboundPrompt({
         context: attempt.currentInboundContext,
         prompt: promptSubmission.prompt,
+        serialization: contextSerialization,
       })
     : promptSubmission.prompt;
   const promptForModel = isRuntimeOnlyTurn
     ? buildCurrentInboundPrompt({
         context: attempt.currentInboundContext,
         prompt: promptSubmission.modelPrompt ?? promptSubmission.prompt,
+        serialization: contextSerialization,
       })
     : (promptSubmission.modelPrompt ?? promptSubmission.prompt);
   const currentUserTimestampOverride =
@@ -625,8 +643,10 @@ export function prepareEmbeddedAttemptPromptContext(input: {
       ]
         .filter((value): value is string => Boolean(value))
         .join("\n\n") || undefined;
-  const runtimeContextMessageForCurrentTurn =
-    buildRuntimeContextCustomMessage(runtimeContextForHook);
+  const runtimeContextMessageForCurrentTurn = buildRuntimeContextCustomMessage(
+    runtimeContextForHook,
+    contextSerialization.mode,
+  );
   const messagesForCurrentPrompt = runtimeContextMessageForCurrentTurn
     ? [...sessionMessages, runtimeContextMessageForCurrentTurn]
     : sessionMessages;
@@ -640,6 +660,7 @@ export function prepareEmbeddedAttemptPromptContext(input: {
       : {}),
   });
   if (input.systemPromptReport) {
+    input.systemPromptReport.contextSerialization = inboundProjection.report;
     input.systemPromptReport.currentTurn = {
       ...(attempt.currentInboundEventKind ? { kind: attempt.currentInboundEventKind } : {}),
       promptChars: promptForModel.length,
@@ -668,6 +689,7 @@ export function prepareEmbeddedAttemptPromptContext(input: {
   return {
     aggregatePressureEngaged,
     contextTokenBudget,
+    contextSerializationReport: inboundProjection.report,
     ...(currentUserTimestampOverride ? { currentUserTimestampOverride } : {}),
     effectivePrompt: input.prompt.effectivePrompt,
     hookMessagesForCurrentPrompt,

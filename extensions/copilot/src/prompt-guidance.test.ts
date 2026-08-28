@@ -14,6 +14,7 @@ const fullDelegationTools = [
 function buildGuidance(
   attempt: Partial<AttemptParamsLike> = {},
   callableToolNames: Iterable<string> = fullDelegationTools,
+  agentProfileSystemPrompt?: string,
 ): string | undefined {
   return buildCopilotPromptGuidance({
     attempt: {
@@ -24,6 +25,7 @@ function buildGuidance(
       ...attempt,
     } as AttemptParamsLike,
     callableToolNames,
+    agentProfileSystemPrompt,
   });
 }
 
@@ -94,6 +96,18 @@ describe("buildCopilotPromptGuidance", () => {
     expect(guidance).not.toContain("sessions_yield");
     expect(guidance).not.toContain("subagents(action=list)");
     expect(buildGuidance({}, ["sessions_yield", "subagents"])).not.toContain("## Delegation");
+  });
+
+  it("uses an Agent Profile prompt without standard workspace or skill guidance", () => {
+    const guidance = buildGuidance(
+      {},
+      fullDelegationTools,
+      "SMALL_PROFILE_PROMPT\n\nRUNTIME_CONTEXT_MARKER",
+    );
+
+    expect(guidance).toBe("SMALL_PROFILE_PROMPT\n\nRUNTIME_CONTEXT_MARKER");
+    expect(guidance).not.toContain("## Skill Workshop");
+    expect(guidance).not.toContain("## Delegation");
   });
 
   it("wraps conversation and subagent context without adding workspace prompt sections", () => {

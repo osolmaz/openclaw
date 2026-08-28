@@ -6,13 +6,13 @@ import {
   isCodeModeDiagnosticEnabled,
   logCodeModeDiagnostic,
 } from "../../../logging/code-mode-diagnostic.js";
+import { filterToolsByAgentProfile } from "../../agent-profiles.js";
 import { resolveToolLoopDetectionConfig } from "../../agent-tools.js";
 import {
   CODE_MODE_EXEC_TOOL_NAME,
   CODE_MODE_WAIT_TOOL_NAME,
   createCodeModeTools,
 } from "../../code-mode.js";
-import { filterLocalModelLeanTools } from "../../local-model-lean.js";
 import { logAgentRuntimeToolDiagnostics } from "../../runtime-plan/tools.js";
 import { buildEmptyExplicitToolAllowlistError } from "../../tool-allowlist-guard.js";
 import { isToolExecutionAllowed, TOOL_EXECUTION_GATED_MESSAGE } from "../../tool-policy-shared.js";
@@ -57,7 +57,8 @@ export function prepareEmbeddedAttemptToolCatalog(input: {
   const {
     codeModeControlsEnabledForRun,
     codeModeSkills,
-    localModelLeanPreserveToolNames,
+    agentProfile,
+    agentProfilePreserveToolNames,
     runtimeCapabilityProfile,
     toolSearchConfig,
     toolSearchControlsEnabledForRun,
@@ -123,11 +124,14 @@ export function prepareEmbeddedAttemptToolCatalog(input: {
     toolHookContext: catalogToolHookContext,
     codeModeSkills,
   });
-  const projectedToolSearchTools = filterLocalModelLeanTools({
+  const projectedToolSearchTools = filterToolsByAgentProfile({
     tools: toolSearch.tools,
     config: attempt.config,
     agentId: input.sessionAgentId,
-    preserveToolNames: localModelLeanPreserveToolNames,
+    modelProvider: attempt.provider,
+    modelId: attempt.modelId,
+    resolvedProfile: agentProfile,
+    preserveToolNames: agentProfilePreserveToolNames,
   });
   const toolSearchSchemaProjection = filterRuntimeCompatibleTools(projectedToolSearchTools);
   logRuntimeToolSchemaQuarantine({

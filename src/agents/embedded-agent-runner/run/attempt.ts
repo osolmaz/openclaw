@@ -230,7 +230,7 @@ export async function runEmbeddedAttempt(
     const {
       codeModeControlsEnabledForRun,
       computerContextEpoch,
-      localModelLeanEnabled,
+      agentProfile,
       replaySafetyOptions,
       runCleanups: preparedRunCleanups,
       toolSearchControlsEnabledForRun,
@@ -324,6 +324,7 @@ export async function runEmbeddedAttempt(
         prepareEmbeddedAttemptSystemPrompt({
           activeContextEngine,
           attempt: params,
+          agentProfile,
           bootstrap: preparedBootstrap,
           capabilityToolNames: toolSearchRunPlan.capabilityToolNames,
           defaultAgentId,
@@ -412,7 +413,7 @@ export async function runEmbeddedAttempt(
             contextGuards: { computerContextEpoch },
             trajectory: {
               effectiveToolCount: effectiveTools.length,
-              localModelLeanEnabled,
+              agentProfile,
               ...(preparedSystemPrompt.systemPromptReport
                 ? { systemPromptReport: preparedSystemPrompt.systemPromptReport }
                 : {}),

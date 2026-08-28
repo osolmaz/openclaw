@@ -5,7 +5,7 @@
  * non-interactive method, and installs runtime plugins required by the model.
  */
 import type { ApiKeyCredential } from "../../../agents/auth-profiles/types.js";
-import { applyAutoLocalModelLean } from "../../../config/local-model-lean-auto.js";
+import { applyAutoAgentProfile } from "../../../config/agent-profile-auto.js";
 import { resolveAgentModelPrimaryValue } from "../../../config/model-input.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { enablePluginInConfig } from "../../../plugins/enable.js";
@@ -293,14 +293,14 @@ export async function applyNonInteractivePluginProviderChoice(params: {
     workspaceDir,
   });
   const previousModel = providerConfig.agents?.defaults?.model;
-  const previousAutoModel = enableResult.config.wizard?.localModelLeanAutoModel;
+  const previousAutoModel = enableResult.config.wizard?.agentProfileAutoModel;
   const retainsAutoModelOwnership =
     previousAutoModel !== undefined &&
     previousAutoModel === resolveAgentModelPrimaryValue(previousModel) &&
-    previousAutoModel === copilotInstall.cfg.wizard?.localModelLeanAutoModel;
+    previousAutoModel === copilotInstall.cfg.wizard?.agentProfileAutoModel;
 
   return projectProviderResult(
-    applyAutoLocalModelLean({
+    applyAutoAgentProfile({
       config: copilotInstall.cfg,
       providerId: providerChoice.provider.id,
       modelRef: selectedModel,

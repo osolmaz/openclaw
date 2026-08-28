@@ -495,13 +495,13 @@ describe("agent exec command composition", () => {
     await expect(fs.stat(retainedRunStateDir)).resolves.toBeDefined();
   });
 
-  it("applies explicit Code Mode and lean local-model controls to the isolated config", async () => {
+  it("applies explicit Code Mode and Agent Profile controls to the isolated config", async () => {
     const { runtime } = createRuntime();
     let observedConfig: unknown;
 
     const result = await agentExecCommand(
       "inspect",
-      { codeMode: "code", localModelLean: true },
+      { codeMode: "code", agentProfile: "openclaw/small" },
       runtime,
       {
         runAgent: vi.fn(async () => {
@@ -513,7 +513,7 @@ describe("agent exec command composition", () => {
 
     expect(result.exitCode).toBe(0);
     expect(observedConfig).toMatchObject({
-      agents: { defaults: { experimental: { localModelLean: true } } },
+      agents: { defaults: { agentProfileId: "openclaw/small" } },
       tools: { codeMode: true },
     });
   });
@@ -1039,11 +1039,11 @@ describe("agent exec run config layering", () => {
     const config = buildExecRunConfig({
       base: { tools: { codeMode: { enabled: true } } },
       cwd: "/run/here",
-      opts: { codeMode: "direct", localModelLean: true },
+      opts: { codeMode: "direct", agentProfile: "openclaw/small" },
     });
 
     expect(config.tools?.codeMode).toBe(false);
-    expect(config.agents?.defaults?.experimental?.localModelLean).toBe(true);
+    expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
   });
 });
 

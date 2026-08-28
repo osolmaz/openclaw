@@ -26,6 +26,11 @@ import {
 import { createAgentHarnessToolSurfaceRuntime } from "openclaw/plugin-sdk/agent-harness-tool-runtime";
 import { toStringifiedError as toCopilotToolError } from "openclaw/plugin-sdk/error-runtime";
 import { isRawCopilotModelRun } from "./attempt-mode.js";
+import {
+  findDuplicateToolNames,
+  hasNonWildcardGlobAllowlist,
+  readInlinePluginToolMeta,
+} from "./tool-bridge-helpers.js";
 
 type CreateOpenClawCodingTools =
   (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingTools"];
@@ -153,6 +158,7 @@ interface CopilotToolBridgeInput {
 interface CopilotToolBridge {
   cleanup?: () => void;
   codeModeEngaged?: boolean;
+  agentProfileSystemPrompt?: string;
   promptToolPolicy: {
     apply: (params?: { toolsAllow?: string[]; forceToolNames?: readonly string[] }) => {
       tools: SdkTool[];
@@ -198,14 +204,6 @@ export async function createCopilotToolBridge(
         includeCoreTools: true,
       }
     : toolPlan;
-  if (!effectiveToolPlan.constructTools) {
-    return { codeModeEngaged: false, promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY, sourceTools: [] };
-  }
-
-  const createOpenClawCodingTools =
-    input.createOpenClawCodingTools ??
-    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
-
   const toolSurfaceRuntime = createAgentHarnessToolSurfaceRuntime({
     abortSignal: input.abortSignal,
     agentId: input.agentId,
@@ -218,7 +216,7 @@ export async function createCopilotToolBridge(
     model: attemptParams.model,
     modelId: input.modelId,
     modelProvider: input.modelProvider,
-    modelToolsEnabled: true,
+    modelToolsEnabled: effectiveToolPlan.constructTools,
     prompt: attemptParams.prompt,
     runId: attemptParams.runId,
     runtimeToolAllowlist: effectiveToolPlan.runtimeToolAllowlist,
@@ -228,6 +226,24 @@ export async function createCopilotToolBridge(
     sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
     toolsAllow: attemptParams.toolsAllow,
   });
+  if (!effectiveToolPlan.constructTools) {
+    return {
+      cleanup: toolSurfaceRuntime.cleanup,
+      codeModeEngaged: false,
+      agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+        sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+        toolNames: [],
+        runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+      }),
+      promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY,
+      sourceTools: [],
+    };
+  }
+
+  const createOpenClawCodingTools =
+    input.createOpenClawCodingTools ??
+    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
+
   const toolOptions = buildOpenClawCodingToolsOptions(
     input,
     {
@@ -273,7 +289,7 @@ export async function createCopilotToolBridge(
     { preserveToolNames: toolSurfaceRuntime.runtimeToolAllowlist },
   );
   const compactedTools = toolSurfaceRuntime.compactTools(plannedSourceTools, {
-    localModelLeanApplied: true,
+    agentProfileApplied: true,
   });
   // The constructor output is bound before catalog compaction so hidden tools
   // cannot outlive the attempt. Bind only controls created by compaction here;
@@ -316,6 +332,11 @@ export async function createCopilotToolBridge(
     // got code-mode controls. Without it the run reports `codeModeEngaged`
     // as unset and telemetry cannot tell "off" from "harness did not report".
     codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+    agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+      sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+      toolNames: exposedTools.map((tool) => tool.name),
+      runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+    }),
     promptToolPolicy: {
       apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
         const result = compactedTools.promptToolPolicy.apply(params);
@@ -456,6 +477,7 @@ function buildOpenClawCodingToolsOptions(
     abortSignal: input.abortSignal,
     modelProvider: input.modelProvider,
     modelId: input.modelId,
+    resolvedAgentProfile: toolSurfaceRuntime?.agentProfile,
     includeCoreTools: toolPlan.includeCoreTools,
     includeToolSearchControls: toolSurfaceRuntime?.includeToolSearchControls,
     toolSearchCatalogRef: toolSurfaceRuntime?.toolSearchCatalogRef,
@@ -870,30 +892,4 @@ function filterCopilotToolsForConstructionPlan<T extends { name: string }>(
     }
     return true;
   });
-}
-
-function hasNonWildcardGlobAllowlist(toolsAllow: string[] | undefined): boolean {
-  return (toolsAllow ?? []).some((entry) => {
-    const trimmed = entry.trim();
-    return trimmed !== "*" && trimmed.includes("*");
-  });
-}
-
-function readInlinePluginToolMeta(tool: { name: string }): { pluginId: string } | undefined {
-  const pluginId = (tool as { pluginId?: unknown }).pluginId;
-  return typeof pluginId === "string" && pluginId.trim() ? { pluginId } : undefined;
-}
-
-function findDuplicateToolNames(sourceTools: AnyAgentTool[]): string[] {
-  const counts = new Map<string, number>();
-  for (const sourceTool of sourceTools) {
-    if (typeof sourceTool.name !== "string" || sourceTool.name.length === 0) {
-      continue;
-    }
-    counts.set(sourceTool.name, (counts.get(sourceTool.name) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .filter(([, count]) => count > 1)
-    .map(([name]) => name)
-    .toSorted();
 }

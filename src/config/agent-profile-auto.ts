@@ -2,18 +2,16 @@ import { isCloudModelRef } from "@openclaw/model-catalog-core/model-catalog-refs
 import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import type { OpenClawConfig } from "./types.openclaw.js";
 
-const AUTO_LOCAL_MODEL_LEAN_PROVIDER_IDS = new Set(["lmstudio", "ollama"]);
+const AUTO_SMALL_PROFILE_PROVIDER_IDS = new Set(["lmstudio", "ollama"]);
 
-/** Returns true only for local runtimes that onboarding can identify without model-name guesses. */
-function shouldAutoEnableLocalModelLean(providerId: string, modelRef: string): boolean {
+function shouldAutoSelectSmallProfile(providerId: string, modelRef: string): boolean {
   const normalizedProviderId = normalizeProviderId(providerId);
-  if (!AUTO_LOCAL_MODEL_LEAN_PROVIDER_IDS.has(normalizedProviderId)) {
+  if (!AUTO_SMALL_PROFILE_PROVIDER_IDS.has(normalizedProviderId)) {
     return false;
   }
   if (normalizedProviderId !== "ollama") {
     return true;
   }
-  // Hosted source-tagged models can be routed through the same local daemon.
   return !isCloudModelRef(modelRef);
 }
 
@@ -24,12 +22,12 @@ function resolveDefaultModelRef(config: OpenClawConfig): string | undefined {
 
 function clearAutoModel(config: OpenClawConfig): OpenClawConfig {
   const wizard = { ...config.wizard };
-  delete wizard.localModelLeanAutoModel;
+  delete wizard.agentProfileAutoModel;
   return { ...config, wizard };
 }
 
-/** Maintains the onboarding-owned lean default while preserving explicit user configuration. */
-export function applyAutoLocalModelLean(params: {
+/** Maintains onboarding-owned profile selection while preserving explicit user configuration. */
+export function applyAutoAgentProfile(params: {
   config: OpenClawConfig;
   providerId: string;
   modelRef: string;
@@ -39,41 +37,38 @@ export function applyAutoLocalModelLean(params: {
   changed: boolean;
   enabled: boolean;
 } {
-  const localModelLean = params.config.agents?.defaults?.experimental?.localModelLean;
-  const autoModel = params.config.wizard?.localModelLeanAutoModel;
+  const selector = params.config.agents?.defaults?.agentProfileId;
+  const autoModel = params.config.wizard?.agentProfileAutoModel;
   const onboardingOwnsSetting =
     autoModel !== undefined &&
     (params.previousModelRef ?? resolveDefaultModelRef(params.config)) === autoModel;
-  if (!shouldAutoEnableLocalModelLean(params.providerId, params.modelRef)) {
+  if (!shouldAutoSelectSmallProfile(params.providerId, params.modelRef)) {
     if (!autoModel) {
       return { config: params.config, changed: false, enabled: false };
     }
     const config = clearAutoModel(params.config);
-    if (!onboardingOwnsSetting || localModelLean !== true) {
+    if (!onboardingOwnsSetting || selector !== "openclaw/small") {
       return { config, changed: true, enabled: false };
     }
-    const experimental = { ...params.config.agents?.defaults?.experimental };
-    delete experimental.localModelLean;
+    const defaults = { ...params.config.agents?.defaults };
+    delete defaults.agentProfileId;
     return {
       config: {
         ...config,
         agents: {
           ...config.agents,
-          defaults: {
-            ...config.agents?.defaults,
-            experimental,
-          },
+          defaults,
         },
       },
       changed: true,
       enabled: false,
     };
   }
-  if (localModelLean !== undefined) {
+  if (selector !== undefined) {
     if (!autoModel) {
       return { config: params.config, changed: false, enabled: false };
     }
-    if (!onboardingOwnsSetting || !localModelLean) {
+    if (!onboardingOwnsSetting || selector !== "openclaw/small") {
       return { config: clearAutoModel(params.config), changed: true, enabled: false };
     }
     if (autoModel === params.modelRef) {
@@ -82,7 +77,7 @@ export function applyAutoLocalModelLean(params: {
     return {
       config: {
         ...params.config,
-        wizard: { ...params.config.wizard, localModelLeanAutoModel: params.modelRef },
+        wizard: { ...params.config.wizard, agentProfileAutoModel: params.modelRef },
       },
       changed: true,
       enabled: false,
@@ -93,16 +88,13 @@ export function applyAutoLocalModelLean(params: {
       ...params.config,
       wizard: {
         ...params.config.wizard,
-        localModelLeanAutoModel: params.modelRef,
+        agentProfileAutoModel: params.modelRef,
       },
       agents: {
         ...params.config.agents,
         defaults: {
           ...params.config.agents?.defaults,
-          experimental: {
-            ...params.config.agents?.defaults?.experimental,
-            localModelLean: true,
-          },
+          agentProfileId: "openclaw/small",
         },
       },
     },

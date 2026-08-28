@@ -65,10 +65,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     | "runAbortSignal"
   >;
   contextGuards: Pick<ContextGuardsInput, "computerContextEpoch">;
-  trajectory: Pick<
-    TrajectoryInput,
-    "effectiveToolCount" | "localModelLeanEnabled" | "systemPromptReport"
-  >;
+  trajectory: Pick<TrajectoryInput, "effectiveToolCount" | "agentProfile" | "systemPromptReport">;
   transport: Pick<
     TransportInput,
     | "abortSignal"
@@ -222,7 +219,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     clientToolCount: preparedAgentSession.clientToolDefs.length,
     effectiveToolCount: input.trajectory.effectiveToolCount,
     effectiveWorkspace: input.effectiveWorkspace,
-    localModelLeanEnabled: input.trajectory.localModelLeanEnabled,
+    agentProfile: input.trajectory.agentProfile,
     sessionAgentId: input.sessionManager.sessionAgentId,
     ...(input.trajectory.systemPromptReport
       ? { systemPromptReport: input.trajectory.systemPromptReport }

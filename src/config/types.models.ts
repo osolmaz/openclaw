@@ -26,6 +26,9 @@ export const MODEL_APIS = [
 
 export type ModelApi = (typeof MODEL_APIS)[number];
 
+export const MODEL_SIZE_CLASSES = ["tiny", "small", "medium", "large"] as const;
+export type ModelSizeClass = (typeof MODEL_SIZE_CLASSES)[number];
+
 type SupportedOpenAICompatFields = Pick<
   OpenAICompletionsCompat,
   | "supportsStore"
@@ -181,6 +184,8 @@ export type ModelDefinitionConfig = {
       range: [number, number] | [number];
     }>;
   };
+  /** Trusted total-parameter size class used for Agent Profile selection. */
+  modelSizeClass?: ModelSizeClass;
   /** Provider/native maximum context window in tokens. */
   contextWindow?: number;
   /**

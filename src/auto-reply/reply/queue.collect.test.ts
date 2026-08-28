@@ -3232,15 +3232,23 @@ describe("followup queue collect routing", () => {
     const { calls, done, runFollowup } = createDrainRecorder();
     const settings: QueueSettings = { mode: "collect", debounceMs: 0 };
 
-    for (const [prompt, contextText] of [
-      ["first", "context one"],
-      ["second", "context two"],
+    for (const [prompt, contextText, leanText, leanResumableText] of [
+      ["first", "context one", "lean one", "lean event one"],
+      ["second", "context two", "lean two", "lean event two"],
     ] as const) {
       enqueueFollowupRun(
         key,
         {
           ...createRun({ prompt }),
-          currentInboundContext: { text: contextText },
+          currentInboundContext: {
+            text: contextText,
+            leanText,
+            leanResumableText,
+            serializationStats: {
+              removedSessionMessages: 1,
+              deduplicatedMessages: 2,
+            },
+          },
         },
         settings,
       );
@@ -3253,6 +3261,18 @@ describe("followup queue collect routing", () => {
     expect(calls[0]?.prompt).toContain("second");
     expect(calls[0]?.currentInboundContext?.text).toContain("Queued #1 context:\ncontext one");
     expect(calls[0]?.currentInboundContext?.text).toContain("Queued #2 context:\ncontext two");
+    expect(calls[0]?.currentInboundContext?.leanText).toContain("Queued #1 context:\nlean one");
+    expect(calls[0]?.currentInboundContext?.leanText).toContain("Queued #2 context:\nlean two");
+    expect(calls[0]?.currentInboundContext?.leanResumableText).toContain(
+      "Queued #1 context:\nlean event one",
+    );
+    expect(calls[0]?.currentInboundContext?.leanResumableText).toContain(
+      "Queued #2 context:\nlean event two",
+    );
+    expect(calls[0]?.currentInboundContext?.serializationStats).toEqual({
+      removedSessionMessages: 2,
+      deduplicatedMessages: 4,
+    });
   });
 
   it("does not let one source cancel an admitted collected run", async () => {

@@ -252,6 +252,7 @@ export async function runCopilotExecution(context: {
     frameImageIdentity?: string;
   } = { value: 0 };
   let codeModeEngaged: boolean | undefined;
+  let agentProfileSystemPrompt: string | undefined;
   let promptToolPolicy:
     | Awaited<ReturnType<typeof createToolBridge>>["promptToolPolicy"]
     | undefined;
@@ -300,6 +301,7 @@ export async function runCopilotExecution(context: {
         });
         cleanupToolBridge = toolBridge.cleanup;
         codeModeEngaged = toolBridge.codeModeEngaged;
+        agentProfileSystemPrompt = toolBridge.agentProfileSystemPrompt;
         promptToolPolicy = toolBridge.promptToolPolicy;
         resultContentSourceByToolName = new Map(
           toolBridge.sourceTools.flatMap((tool) =>
@@ -334,6 +336,7 @@ export async function runCopilotExecution(context: {
       operation: deps.operation,
       poolAcquire,
       ringZeroSystemAgentRun,
+      agentProfileSystemPrompt,
       promptToolPolicy,
       sessionProvider,
       settledToolFinalization,

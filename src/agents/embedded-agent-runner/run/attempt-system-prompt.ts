@@ -15,6 +15,7 @@ type ProviderSystemPromptTransform = (params: {
 
 type BuildAttemptSystemPromptParams = {
   isRawModelRun: boolean;
+  baseSystemPromptOverride?: string;
   embeddedSystemPrompt: EmbeddedSystemPromptParams;
   transformProviderSystemPrompt: ProviderSystemPromptTransform;
   providerTransform: {
@@ -39,7 +40,8 @@ type AttemptSystemPrompt = {
 export function buildAttemptSystemPrompt(
   params: BuildAttemptSystemPromptParams,
 ): AttemptSystemPrompt {
-  const baseSystemPrompt = buildEmbeddedSystemPrompt(params.embeddedSystemPrompt);
+  const baseSystemPrompt =
+    params.baseSystemPromptOverride ?? buildEmbeddedSystemPrompt(params.embeddedSystemPrompt);
   const systemPrompt = params.isRawModelRun
     ? ""
     : params.transformProviderSystemPrompt({

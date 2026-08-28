@@ -78,8 +78,14 @@ type ReasoningStreamPayload = Pick<
 
 export type CurrentInboundPromptContext = {
   text: string;
+  leanText?: string;
   resumableText?: string;
+  leanResumableText?: string;
   promptJoiner?: "\n\n" | "\n" | " ";
+  serializationStats?: {
+    removedSessionMessages: number;
+    deduplicatedMessages: number;
+  };
   /** Generated goal blocks owned by inbound-context assembly, never user text. */
   injectedGoalContexts?: string[];
 };

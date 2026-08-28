@@ -97,21 +97,29 @@ export function refreshActiveGoalContext(
     injectedGoals,
     activeGoalContext,
   });
-  const refreshedResumableText = context.resumableText
-    ? refreshActiveGoalContextText({
-        text: context.resumableText,
-        injectedGoals,
-        activeGoalContext,
-      })
-    : undefined;
+  const refreshVariant = (text: string | undefined) =>
+    text === undefined
+      ? undefined
+      : refreshActiveGoalContextText({
+          text,
+          injectedGoals,
+          activeGoalContext,
+        });
+  const refreshedLeanText = refreshVariant(context.leanText);
+  const refreshedResumableText = refreshVariant(context.resumableText);
+  const refreshedLeanResumableText = refreshVariant(context.leanResumableText);
   if (!refreshedText) {
     return undefined;
   }
   return {
     ...context,
     text: refreshedText,
+    ...(refreshedLeanText !== undefined ? { leanText: refreshedLeanText } : {}),
     ...(refreshedResumableText !== undefined
       ? { resumableText: refreshedResumableText || undefined }
+      : {}),
+    ...(refreshedLeanResumableText !== undefined
+      ? { leanResumableText: refreshedLeanResumableText }
       : {}),
     injectedGoalContexts: activeGoalContext ? [activeGoalContext] : undefined,
   };
@@ -607,6 +615,191 @@ export function buildInboundMetaSystemPrompt(
     "```",
     "",
   ].join("\n");
+}
+
+export type LeanInboundContextProjection = {
+  text: string;
+  removedSessionMessages: number;
+  deduplicatedMessages: number;
+};
+
+function readLeanMessageId(value: unknown): string | undefined {
+  return isRecord(value) ? sanitizeTranscriptField(value["message_id"]) : undefined;
+}
+
+function formatLeanHistoryMessage(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = readLeanMessageId(value);
+  const sender = sanitizeTranscriptField(value["sender"]) ?? "unknown sender";
+  const replyToId = sanitizeTranscriptField(value["reply_to_id"]);
+  const body = sanitizeTranscriptBody(value["body"]);
+  const mediaType = sanitizeTranscriptField(value["media_type"]);
+  const mediaPath =
+    normalizePromptMediaPath(value["media_path"]) ?? sanitizeTranscriptField(value["media_ref"]);
+  const media = mediaType ? `[${mediaType}${mediaPath ? ` ${mediaPath}` : ""}]` : undefined;
+  const content = [body, media].filter(Boolean).join(" ");
+  if (!content) {
+    return undefined;
+  }
+  const prefix = [
+    id ? `#${id}` : undefined,
+    value["is_reply_target"] === true ? "[reply target]" : undefined,
+    replyToId ? `->#${replyToId}` : undefined,
+    `${sender}:`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `${prefix} ${content}`;
+}
+
+/** Builds the allowlisted inbound context used by lean context serialization. */
+export function buildLeanInboundUserContextPrefix(
+  ctx: TemplateContext,
+  sessionEntry?: SessionEntry,
+): LeanInboundContextProjection {
+  const blocks: string[] = [];
+  const chatType = normalizeChatType(ctx.ChatType);
+  const isDirect = !chatType || chatType === "direct";
+  const messageId =
+    normalizePromptMetadataString(ctx.MessageSid) ??
+    normalizePromptMetadataString(ctx.MessageSidFull);
+  const senderName =
+    normalizePromptMetadataString(ctx.SenderName) ??
+    normalizePromptMetadataString(ctx.SenderUsername);
+  const senderId = normalizePromptMetadataString(ctx.SenderId);
+  const compactFacts = {
+    message_id: messageId,
+    sender: !isDirect
+      ? {
+          name: senderName,
+          id: senderId,
+          is_bot: ctx.SenderIsBot === true ? true : undefined,
+        }
+      : undefined,
+    reply_to_id: normalizePromptMetadataString(ctx.ReplyToId),
+    thread_id:
+      ctx.MessageThreadId != null
+        ? normalizePromptMetadataString(String(ctx.MessageThreadId))
+        : undefined,
+    thread_label: normalizePromptMetadataString(ctx.ThreadLabel),
+    was_mentioned: typeof ctx.WasMentioned === "boolean" ? ctx.WasMentioned : undefined,
+    explicitly_mentioned_bot:
+      typeof ctx.ExplicitlyMentionedBot === "boolean" ? ctx.ExplicitlyMentionedBot : undefined,
+    mentioned_user_ids: normalizePromptMetadataStringArray(ctx.MentionedUserIds),
+    mentioned_subteam_ids: normalizePromptMetadataStringArray(ctx.MentionedSubteamIds),
+    mention_source: normalizePromptMetadataString(ctx.MentionSource),
+  };
+  if (Object.values(compactFacts).some((value) => value !== undefined)) {
+    blocks.push(`Context: ${JSON.stringify(compactFacts)}`);
+  }
+
+  const replyBody = sanitizeTranscriptBody(ctx.ReplyToBody);
+  const replySender = normalizePromptMetadataString(ctx.ReplyToSender);
+  if (replyBody || replySender) {
+    blocks.push(
+      `Reply target: ${JSON.stringify({
+        sender: replySender,
+        body: replyBody,
+        is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
+      })}`,
+    );
+  }
+
+  const threadStarterBody = sanitizePromptBody(ctx.ThreadStarterBody);
+  if (threadStarterBody) {
+    blocks.push(`Thread starter: ${JSON.stringify({ body: threadStarterBody })}`);
+  }
+
+  const forwardedFrom = normalizePromptMetadataString(ctx.ForwardedFrom);
+  if (forwardedFrom) {
+    blocks.push(
+      `Forwarded: ${JSON.stringify({
+        from: forwardedFrom,
+        type: normalizePromptMetadataString(ctx.ForwardedFromType),
+        username: normalizePromptMetadataString(ctx.ForwardedFromUsername),
+        title: normalizePromptMetadataString(ctx.ForwardedFromTitle),
+      })}`,
+    );
+  }
+
+  const location = buildLocationContextPayload(ctx);
+  if (location) {
+    blocks.push(`Location: ${JSON.stringify(location)}`);
+  }
+
+  const seenMessageIds = new Set<string>();
+  const historyLines: string[] = [];
+  let removedSessionMessages = 0;
+  let deduplicatedMessages = 0;
+  const addHistoryMessage = (value: unknown) => {
+    const id = readLeanMessageId(value);
+    if (id?.startsWith("session:")) {
+      removedSessionMessages += 1;
+      return;
+    }
+    if (id && seenMessageIds.has(id)) {
+      deduplicatedMessages += 1;
+      return;
+    }
+    const line = formatLeanHistoryMessage(value);
+    if (!line) {
+      return;
+    }
+    if (id) {
+      seenMessageIds.add(id);
+    }
+    historyLines.push(line);
+  };
+
+  for (const entry of ctx.ChannelStructuredContext ?? []) {
+    if (isChatWindowStructuredContext(entry)) {
+      for (const message of Array.isArray(entry.payload["messages"])
+        ? entry.payload["messages"]
+        : []) {
+        addHistoryMessage(message);
+      }
+      continue;
+    }
+    blocks.push(
+      formatContextJsonBlock(`${sanitizeTranscriptField(entry.label) ?? "Channel context"}:`, {
+        type: normalizePromptMetadataString(entry.type),
+        payload: entry.payload,
+      }),
+    );
+  }
+
+  for (const entry of (ctx.InboundHistory ?? []).slice(-MAX_UNTRUSTED_HISTORY_ENTRIES)) {
+    addHistoryMessage({
+      message_id: entry.messageId,
+      sender: entry.sender,
+      body: entry.body,
+      media_type:
+        buildInboundHistoryMediaPromptPayload(entry.media)
+          .map((media) => media["content_type"])
+          .filter((value): value is string => typeof value === "string")
+          .join(", ") || undefined,
+    });
+  }
+  if (historyLines.length > 0) {
+    blocks.push(["History:", ...historyLines].join("\n"));
+  }
+
+  const activeGoalContext = formatActiveGoalContext(sessionEntry);
+  if (activeGoalContext) {
+    blocks.push(activeGoalContext);
+  }
+  const currentMessageContext = formatTelegramCurrentMessageContext(ctx);
+  if (currentMessageContext) {
+    blocks.push(currentMessageContext);
+  }
+
+  return {
+    text: blocks.filter(Boolean).join("\n"),
+    removedSessionMessages,
+    deduplicatedMessages,
+  };
 }
 
 /** Builds untrusted inbound context text that prefixes the user-visible body. */

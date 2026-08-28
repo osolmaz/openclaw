@@ -1881,20 +1881,20 @@ describe("activateSetupInference", () => {
 
   it.each([
     {
-      name: "auto-enables the lean surface for a verified local model",
+      name: "auto-enables the small profile for a verified local model",
       initialConfig: {} satisfies OpenClawConfig,
-      expectedLean: true,
+      expectedProfileId: "openclaw/small" as const,
       expectedAnnouncement: true,
     },
     {
-      name: "preserves an explicit localModelLean=false",
+      name: "preserves an explicit base profile",
       initialConfig: {
-        agents: { defaults: { experimental: { localModelLean: false } } },
+        agents: { defaults: { agentProfileId: "openclaw/base" } },
       } satisfies OpenClawConfig,
-      expectedLean: false,
+      expectedProfileId: "openclaw/base" as const,
       expectedAnnouncement: false,
     },
-  ])("$name", async ({ initialConfig, expectedLean, expectedAnnouncement }) => {
+  ])("$name", async ({ initialConfig, expectedProfileId, expectedAnnouncement }) => {
     const modelRef = "lmstudio/qwen-local";
     const detect = vi.fn(async () => ({ modelRef, detail: "qwen-local at localhost" }));
     const prepare = vi.fn(async () => ({
@@ -1969,7 +1969,7 @@ describe("activateSetupInference", () => {
       `Inference verified: ${modelRef}`,
       ...(expectedAnnouncement
         ? [
-            "This model is small, so I set up the lean surface — switching to a bigger model later lifts it.",
+            "This model uses the openclaw/small Agent Profile; changing to a larger model can select a different profile.",
           ]
         : []),
     ]);
@@ -1984,8 +1984,8 @@ describe("activateSetupInference", () => {
     expect(prepare).toHaveBeenCalledOnce();
     expect(updateAuthStore).not.toHaveBeenCalled();
     expect(configHarness.current()).toMatchObject({
-      ...(expectedAnnouncement ? { wizard: { localModelLeanAutoModel: modelRef } } : {}),
-      agents: { defaults: { model: modelRef, experimental: { localModelLean: expectedLean } } },
+      ...(expectedAnnouncement ? { wizard: { agentProfileAutoModel: modelRef } } : {}),
+      agents: { defaults: { model: modelRef, agentProfileId: expectedProfileId } },
       models: {
         providers: {
           lmstudio: {
@@ -2161,11 +2161,11 @@ describe("activateSetupInference", () => {
 
   it("accepts OpenAI's gpt-5.6 alias reporting Sol while preserving authored rows", async () => {
     const sourceConfig = {
-      wizard: { localModelLeanAutoModel: "lmstudio/qwen-local" },
+      wizard: { agentProfileAutoModel: "lmstudio/qwen-local" },
       agents: {
         defaults: {
           model: "lmstudio/qwen-local",
-          experimental: { localModelLean: true },
+          agentProfileId: "openclaw/small",
         },
       },
       models: {
@@ -2219,8 +2219,8 @@ describe("activateSetupInference", () => {
     expect(configHarness.current().models?.providers?.openai?.models).toEqual(
       sourceConfig.models.providers.openai.models,
     );
-    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBeUndefined();
-    expect(configHarness.current().wizard?.localModelLeanAutoModel).toBeUndefined();
+    expect(configHarness.current().agents?.defaults?.agentProfileId).toBeUndefined();
+    expect(configHarness.current().wizard?.agentProfileAutoModel).toBeUndefined();
   });
 
   it("rejects an existing route that changes after its live probe", async () => {

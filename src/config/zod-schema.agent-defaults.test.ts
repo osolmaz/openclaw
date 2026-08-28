@@ -27,6 +27,23 @@ function expectSchemaFailurePath(result: SchemaParseResult, expectedPathPrefix: 
 }
 
 describe("agent defaults schema", () => {
+  it("accepts context serialization on defaults and agent entries", () => {
+    expect(AgentDefaultsSchema.parse({ contextSerialization: "lean" })?.contextSerialization).toBe(
+      "lean",
+    );
+    expect(
+      AgentEntrySchema.parse({ id: "ops", contextSerialization: "default" }).contextSerialization,
+    ).toBe("default");
+    expectSchemaFailurePath(
+      AgentDefaultsSchema.safeParse({ contextSerialization: "compact" }),
+      "contextSerialization",
+    );
+    expectSchemaFailurePath(
+      AgentEntrySchema.safeParse({ id: "ops", contextSerialization: "compact" }),
+      "contextSerialization",
+    );
+  });
+
   it("accepts utility models on defaults and agent entries", () => {
     const defaults = AgentDefaultsSchema.parse({ utilityModel: "openai/gpt-5.4-mini" })!;
     const agent = AgentEntrySchema.parse({
@@ -241,13 +258,22 @@ describe("agent defaults schema", () => {
     );
   });
 
-  it("accepts experimental.localModelLean", () => {
-    const result = AgentDefaultsSchema.parse({
-      experimental: {
-        localModelLean: true,
-      },
-    })!;
-    expect(result.experimental?.localModelLean).toBe(true);
+  it("accepts registered Agent Profile selectors", () => {
+    const defaults = AgentDefaultsSchema.parse({ agentProfileId: "auto" })!;
+    const agent = AgentEntrySchema.parse({
+      id: "worker",
+      agentProfileId: "openclaw/small",
+    });
+
+    expect(defaults.agentProfileId).toBe("auto");
+    expect(agent.agentProfileId).toBe("openclaw/small");
+    expectSchemaFailurePath(
+      AgentDefaultsSchema.safeParse({ agentProfileId: "unknown/profile" }),
+      "agentProfileId",
+    );
+    expect(AgentDefaultsSchema.safeParse({ experimental: { localModelLean: true } }).success).toBe(
+      false,
+    );
   });
 
   it("accepts contextInjection: always", () => {

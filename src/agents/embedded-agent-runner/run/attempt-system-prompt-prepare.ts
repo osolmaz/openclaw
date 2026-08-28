@@ -10,6 +10,7 @@ import {
 } from "../../../plugins/provider-runtime.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
+import { buildAgentProfileSystemPrompt, type ResolvedAgentProfile } from "../../agent-profiles.js";
 import { listActiveProcessSessionReferences } from "../../bash-process-references.js";
 import { resolveProcessToolScopeKey } from "../../bash-process-scope.js";
 import {
@@ -58,6 +59,7 @@ type PromptTools = Parameters<typeof buildEmbeddedSystemPrompt>[0]["tools"];
 export async function prepareEmbeddedAttemptSystemPrompt(params: {
   activeContextEngine: EmbeddedRunAttemptParams["contextEngine"];
   attempt: EmbeddedRunAttemptParams;
+  agentProfile: ResolvedAgentProfile;
   bootstrap: PreparedBootstrap;
   capabilityToolNames: Set<string>;
   defaultAgentId: string;
@@ -287,8 +289,15 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       .filter((value): value is string => Boolean(value))
       .join("\n\n") || undefined;
 
+  const profileSystemPrompt = buildAgentProfileSystemPrompt({
+    resolvedProfile: params.agentProfile,
+    sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
+    toolNames: params.effectiveTools.map((tool) => tool.name),
+    runtimeSystemPrompt: extraSystemPrompt,
+  });
   const attemptSystemPrompt = buildAttemptSystemPrompt({
     isRawModelRun: params.isRawModelRun,
+    baseSystemPromptOverride: profileSystemPrompt,
     transformProviderSystemPrompt: (transformParams) =>
       transformProviderSystemPrompt({
         ...transformParams,
@@ -368,6 +377,10 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     sessionKey: attempt.sessionKey,
     provider: attempt.provider,
     model: attempt.modelId,
+    agentProfile: {
+      id: params.agentProfile.profile.id,
+      selectionSource: params.agentProfile.selectionSource,
+    },
     workspaceDir: params.effectiveWorkspace,
     bootstrapMaxChars: params.bootstrap.bootstrapMaxChars,
     bootstrapTotalMaxChars: params.bootstrap.bootstrapTotalMaxChars,
@@ -385,8 +398,8 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     })(),
     systemPrompt: attemptSystemPrompt.systemPrompt,
     bootstrapFiles: params.bootstrap.hookAdjustedBootstrapFiles,
-    injectedFiles: params.bootstrap.contextFiles,
-    skillsPrompt: params.skillsPrompt,
+    injectedFiles: profileSystemPrompt ? [] : params.bootstrap.contextFiles,
+    skillsPrompt: profileSystemPrompt ? "" : params.skillsPrompt,
     tools: params.effectiveTools,
   });
   params.markStage("system-prompt");

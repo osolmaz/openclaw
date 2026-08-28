@@ -2,6 +2,7 @@
 import type { SessionSystemPromptReport } from "../../../config/sessions/types.js";
 import { buildTrajectoryRunMetadata } from "../../../trajectory/metadata.js";
 import { createTrajectoryRuntimeRecorder } from "../../../trajectory/runtime.js";
+import type { ResolvedAgentProfile } from "../../agent-profiles.js";
 import type { AgentSession } from "../../sessions/index.js";
 import { resolveAttemptTrajectorySessionFile } from "./attempt-transcript-helpers.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
@@ -12,7 +13,7 @@ export async function prepareEmbeddedAttemptTrajectory(input: {
   clientToolCount: number;
   effectiveToolCount: number;
   effectiveWorkspace: string;
-  localModelLeanEnabled: boolean;
+  agentProfile: ResolvedAgentProfile;
   sessionAgentId: string;
   systemPromptReport?: SessionSystemPromptReport;
 }): Promise<ReturnType<typeof createTrajectoryRuntimeRecorder> | null> {
@@ -60,7 +61,8 @@ export async function prepareEmbeddedAttemptTrajectory(input: {
     agentId: input.sessionAgentId,
     messageProvider: attempt.messageProvider,
     messageChannel: attempt.messageChannel,
-    localModelLean: input.localModelLeanEnabled,
+    agentProfileId: input.agentProfile.profile.id,
+    agentProfileSelectionSource: input.agentProfile.selectionSource,
     toolCount: input.effectiveToolCount,
     clientToolCount: input.clientToolCount,
   });

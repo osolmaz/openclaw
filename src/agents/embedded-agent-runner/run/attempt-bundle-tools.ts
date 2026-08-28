@@ -4,7 +4,7 @@ import {
   getOrCreateSessionMcpRuntime,
   materializeBundleMcpToolsForRun,
 } from "../../agent-bundle-mcp-tools.js";
-import { filterLocalModelLeanTools } from "../../local-model-lean.js";
+import { filterToolsByAgentProfile } from "../../agent-profiles.js";
 import { normalizeAgentRuntimeTools } from "../../runtime-plan/tools.js";
 import { isRuntimeToolAllowed } from "../../tool-policy-match.js";
 import { replaceWithEffectiveToolAllowlist } from "../../tool-policy.js";
@@ -40,7 +40,8 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
     cronCreatorToolAllowlistCaptureRef,
     effectiveToolsAllow,
     inheritedToolAllowlist,
-    localModelLeanPreserveToolNames,
+    agentProfile,
+    agentProfilePreserveToolNames,
     runtimeCapabilityProfile,
     toolsEnabled,
     toolsRaw,
@@ -204,11 +205,14 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
               }),
           })
         : filteredBundledTools;
-    const projectedTools = filterLocalModelLeanTools({
+    const projectedTools = filterToolsByAgentProfile({
       tools: [...tools, ...normalizedBundledTools],
       config: params.attempt.config,
       agentId: params.sessionAgentId,
-      preserveToolNames: localModelLeanPreserveToolNames,
+      modelProvider: params.attempt.provider,
+      modelId: params.attempt.modelId,
+      resolvedProfile: agentProfile,
+      preserveToolNames: agentProfilePreserveToolNames,
     });
     const schemaProjection = filterRuntimeCompatibleTools(projectedTools);
     if (cronCreatorToolAllowlistCaptureRef) {

@@ -14,6 +14,7 @@ minimumReleaseAgeExclude:
   - "@openclaw/proxyline@0.3.4"
   - "@openclaw/uirouter@0.1.1"
   - "acpx"
+  - "agentprofiles@0.1.0"
   - "tokenjuice"
   - "@agentclientprotocol/sdk"
   - "@agentclientprotocol/codex-acp@1.1.7"

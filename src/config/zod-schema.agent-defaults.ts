@@ -1,6 +1,8 @@
 // Defines Zod schema fragments for agent default configuration.
 import { z } from "zod";
+import { AGENT_PROFILE_SELECTORS } from "./agent-profile-ids.js";
 import { isValidNonNegativeByteSizeString } from "./byte-size.js";
+import { CONTEXT_SERIALIZATION_MODES } from "./context-serialization.js";
 import {
   HeartbeatSchema,
   AgentSandboxSchema,
@@ -91,12 +93,8 @@ export const AgentDefaultsSchema = z
       .optional(),
     bootstrapMaxChars: z.number().int().positive().optional(),
     bootstrapTotalMaxChars: z.number().int().positive().optional(),
-    experimental: z
-      .object({
-        localModelLean: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
+    agentProfileId: z.enum(AGENT_PROFILE_SELECTORS).optional(),
+    contextSerialization: z.enum(CONTEXT_SERIALIZATION_MODES).optional(),
     userTimezone: z.string().optional(),
     startupContext: z
       .object({

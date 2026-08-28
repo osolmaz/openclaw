@@ -241,6 +241,7 @@ export async function runEmbeddedAttemptSettledPhase(
       },
       context: {
         ...(boundaryTimezone ? { boundaryTimezone } : {}),
+        contextSerialization: toolBase.contextSerialization,
         includeBoundaryTimestamp,
         isRawModelRun: input.isRawModelRun,
         ...(preparedUserTurnMessage ? { preparedUserTurnMessage } : {}),
@@ -609,6 +610,9 @@ export async function runEmbeddedAttemptSettledPhase(
   }
 
   const beforeAgentFinalizeRevisionReason = getBeforeAgentFinalizeRevisionReason();
+  if (systemPromptReport?.contextSerialization && attemptUsage?.input !== undefined) {
+    systemPromptReport.contextSerialization.providerInputTokens = attemptUsage.input;
+  }
   const result = completeEmbeddedAttemptResult({
     attempt,
     subscription,

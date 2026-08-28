@@ -4,7 +4,12 @@
  * and filters agree on stable model metadata.
  */
 import type { ModelCatalogStatus } from "@openclaw/model-catalog-core/model-catalog-types";
-import type { ModelApi, ModelCompatConfig, ModelMediaInputConfig } from "../config/types.models.js";
+import type {
+  ModelApi,
+  ModelCompatConfig,
+  ModelMediaInputConfig,
+  ModelSizeClass,
+} from "../config/types.models.js";
 import type { ProviderCatalogOutcome } from "../plugins/provider-catalog-outcome.js";
 
 /** Input modalities a catalog entry can advertise. */
@@ -31,6 +36,7 @@ export type ModelCatalogEntry = {
   contextWindows?: ModelContextWindowOption[];
   contextWindowDefault?: string;
   contextTokens?: number;
+  modelSizeClass?: ModelSizeClass;
   reasoning?: boolean;
   /** Config-authored reasoning override; internal provenance, never project to clients. */
   configuredReasoning?: boolean;

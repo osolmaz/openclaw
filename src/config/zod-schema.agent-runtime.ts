@@ -11,6 +11,8 @@ import { isSandboxHostPathAbsolute } from "../agents/sandbox/host-paths.js";
 import { getBlockedNetworkModeReason } from "../agents/sandbox/network-mode.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
+import { AGENT_PROFILE_SELECTORS } from "./agent-profile-ids.js";
+import { CONTEXT_SERIALIZATION_MODES } from "./context-serialization.js";
 import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "./github-identity-profile-id.js";
 import { LEGACY_WEB_SEARCH_PROVIDER_CONFIG_KEYS } from "./web-search-legacy-provider-keys.js";
 import { AgentModelSchema, AgentToolModelSchema } from "./zod-schema.agent-model.js";
@@ -922,12 +924,8 @@ export const AgentEntrySchema = z
       .optional(),
     bootstrapMaxChars: z.number().int().positive().optional(),
     bootstrapTotalMaxChars: z.number().int().positive().optional(),
-    experimental: z
-      .object({
-        localModelLean: z.boolean().optional(),
-      })
-      .strict()
-      .optional(),
+    agentProfileId: z.enum(AGENT_PROFILE_SELECTORS).optional(),
+    contextSerialization: z.enum(CONTEXT_SERIALIZATION_MODES).optional(),
     skills: z.array(z.string()).optional(),
     memory: z
       .object({

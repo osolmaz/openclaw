@@ -6,6 +6,19 @@ export type SessionSystemPromptReport = {
   sessionKey?: string;
   provider?: string;
   model?: string;
+  agentProfile?: {
+    id: string;
+    selectionSource: string;
+  };
+  contextSerialization?: {
+    mode: "default" | "lean";
+    source: "agent-explicit" | "defaults-explicit" | "agent-profile" | "fallback";
+    defaultChars: number;
+    serializedChars: number;
+    removedSessionMessages: number;
+    deduplicatedMessages: number;
+    providerInputTokens?: number;
+  };
   workspaceDir?: string;
   bootstrapMaxChars?: number;
   bootstrapTotalMaxChars?: number;

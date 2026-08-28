@@ -28,6 +28,7 @@ export async function createCopilotSessionSetup(params: {
   operation: CopilotAttemptDeps["operation"];
   poolAcquire: ReturnType<typeof resolvePoolAcquire>;
   ringZeroSystemAgentRun: boolean;
+  agentProfileSystemPrompt?: string;
   promptToolPolicy?: Awaited<ReturnType<typeof createCopilotToolBridge>>["promptToolPolicy"];
   sessionProvider: ResolvedCopilotProvider;
   settledToolFinalization: boolean;
@@ -44,6 +45,7 @@ export async function createCopilotSessionSetup(params: {
     operation,
     poolAcquire,
     ringZeroSystemAgentRun,
+    agentProfileSystemPrompt,
     promptToolPolicy,
     sessionProvider,
     settledToolFinalization,
@@ -55,13 +57,14 @@ export async function createCopilotSessionSetup(params: {
         assertCopilotAttemptHostCapabilities(input);
         return input;
       })();
-  const workspaceBootstrap = ordinaryAttemptInput
-    ? await resolveCopilotWorkspaceBootstrapContext({
-        attempt: ordinaryAttemptInput,
-        effectiveWorkspaceDir,
-        warn: (message) => console.warn(message),
-      })
-    : { instructions: undefined };
+  const workspaceBootstrap =
+    ordinaryAttemptInput && !agentProfileSystemPrompt
+      ? await resolveCopilotWorkspaceBootstrapContext({
+          attempt: ordinaryAttemptInput,
+          effectiveWorkspaceDir,
+          warn: (message) => console.warn(message),
+        })
+      : { instructions: undefined };
   const forceToolNames =
     ordinaryAttemptInput && shouldForceCopilotMessageTool(ordinaryAttemptInput)
       ? (["message"] as const)
@@ -88,6 +91,7 @@ export async function createCopilotSessionSetup(params: {
           return buildCopilotPromptGuidance({
             attempt: input,
             callableToolNames: promptPolicyResult.callableToolNames,
+            agentProfileSystemPrompt,
             workspaceBootstrapInstructions: workspaceBootstrap.instructions,
           });
         },

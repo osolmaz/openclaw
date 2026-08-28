@@ -727,7 +727,7 @@ Replace model IDs with exact names from `ollama list` or
 
   </Accordion>
 
-  <Accordion title="Lean local model profile">
+  <Accordion title="Small-model Agent Profile">
     Some local models handle simple prompts but struggle with the full agent
     tool surface. Limit tools and context before touching global runtime
     settings:
@@ -738,9 +738,7 @@ Replace model IDs with exact names from `ollama list` or
         entries: {
           local: {
             default: true,
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
             model: { primary: "ollama/gemma4" },
           },
         },
@@ -769,10 +767,11 @@ Replace model IDs with exact names from `ollama list` or
 
     Use `compat.supportsTools: false` only when the model or server reliably
     fails on tool schemas — it trades agent capability for stability.
-    `localModelLean` removes heavyweight browser, cron, message, media-generation,
-    voice, and PDF tools from the direct agent surface unless explicitly required,
-    and puts larger catalogs behind Tool Search. It does not change Ollama's
-    runtime context or thinking mode. Pair it with `params.num_ctx` and
+    `openclaw/small` removes heavyweight browser, automations, message,
+    media-generation, voice, and PDF tools from the direct agent surface unless
+    explicitly required, and puts larger catalogs behind Tool Search. It does
+    not change Ollama's runtime context or thinking mode. Pair it with
+    `params.num_ctx` and
     `params.thinking: false` for small Qwen-style thinking models that loop or
     spend their budget on hidden reasoning.
 

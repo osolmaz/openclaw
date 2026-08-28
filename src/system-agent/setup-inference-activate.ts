@@ -7,7 +7,7 @@ import {
   readCodexCliActiveApiKey,
 } from "../agents/cli-credentials.js";
 import { loadAgentRuntimePluginRegistryHandle } from "../agents/runtime-plugins.js";
-import { applyAutoLocalModelLean } from "../config/local-model-lean-auto.js";
+import { applyAutoAgentProfile } from "../config/agent-profile-auto.js";
 import { createMergePatch } from "../config/merge-patch.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
@@ -31,7 +31,7 @@ import {
   type SetupInferenceActivationPersistenceState,
 } from "./setup-inference-activate-persist.js";
 import {
-  AUTO_LOCAL_MODEL_LEAN_ANNOUNCEMENT,
+  AUTO_AGENT_PROFILE_ANNOUNCEMENT,
   type ActivateSetupInferenceParams,
   type ActivateSetupInferenceResult,
   SetupInferenceActivationIndeterminateError,
@@ -459,7 +459,7 @@ async function activateSetupInferenceUnredacted(
       };
     }
 
-    const autoLocalModelLeanUpdate = applyAutoLocalModelLean({
+    const autoAgentProfileUpdate = applyAutoAgentProfile({
       config: sourceCfg,
       providerId: testPlan.provider,
       modelRef: plan.modelRef,
@@ -469,7 +469,7 @@ async function activateSetupInferenceUnredacted(
       plan.manualAuth !== undefined ||
       codexPluginPatch !== undefined ||
       pendingCodexInstall !== undefined ||
-      autoLocalModelLeanUpdate.changed;
+      autoAgentProfileUpdate.changed;
     if (
       !test.auth.authFingerprint &&
       (!test.auth.runtimeOwnerFingerprint ||
@@ -526,7 +526,7 @@ async function activateSetupInferenceUnredacted(
       }
     }
     let committedConfig: OpenClawConfig | undefined;
-    let autoLocalModelLeanApplied = false;
+    let autoAgentProfileApplied = false;
     let gatewayRestartRequired = false;
     if (!needsPersistence) {
       const latestSnapshot = await readSnapshot();
@@ -570,7 +570,7 @@ async function activateSetupInferenceUnredacted(
     if (needsPersistence) {
       const persistenceState: SetupInferenceActivationPersistenceState = {
         committedConfig,
-        autoLocalModelLeanApplied,
+        autoAgentProfileApplied,
         codexInstallOwnership,
         gatewayRestartRequired,
       };
@@ -599,12 +599,8 @@ async function activateSetupInferenceUnredacted(
       if (persistenceFailure) {
         return persistenceFailure;
       }
-      ({
-        committedConfig,
-        autoLocalModelLeanApplied,
-        codexInstallOwnership,
-        gatewayRestartRequired,
-      } = persistenceState);
+      ({ committedConfig, autoAgentProfileApplied, codexInstallOwnership, gatewayRestartRequired } =
+        persistenceState);
     }
     if (codexRegistryNeedsReload && committedConfig) {
       const reloadedRuntimeConfig = await reloadCodexRegistryAfterActivation({
@@ -639,12 +635,12 @@ async function activateSetupInferenceUnredacted(
         );
       }
     }
-    const announceAutoLocalModelLean =
-      autoLocalModelLeanApplied &&
-      committedConfig?.agents?.defaults?.experimental?.localModelLean === true;
+    const announceAutoAgentProfile =
+      autoAgentProfileApplied &&
+      committedConfig?.agents?.defaults?.agentProfileId === "openclaw/small";
     let lines = [
       `Inference verified: ${plan.modelRef}`,
-      ...(announceAutoLocalModelLean ? [AUTO_LOCAL_MODEL_LEAN_ANNOUNCEMENT] : []),
+      ...(announceAutoAgentProfile ? [AUTO_AGENT_PROFILE_ANNOUNCEMENT] : []),
     ];
     if (params.surface === "gateway" && params.recordSetupAudit !== false) {
       const after = await readSnapshot().catch(() => null);

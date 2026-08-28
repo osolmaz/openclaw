@@ -216,7 +216,8 @@ describe("agent command registration", () => {
       "openai/gpt-5.6-sol",
       "--code-mode",
       "code",
-      "--local-model-lean",
+      "--agent-profile",
+      "openclaw/small",
       "--fallback",
       "anthropic/claude-sonnet-4-6",
       "--fallback",
@@ -231,7 +232,7 @@ describe("agent command registration", () => {
         cwd: "/tmp/project",
         model: "openai/gpt-5.6-sol",
         codeMode: "code",
-        localModelLean: true,
+        agentProfile: "openclaw/small",
         fallback: ["anthropic/claude-sonnet-4-6", "google/gemini-3.1-pro-preview"],
         // Stored credentials are the default so exec reaches the same logins as
         // the rest of the CLI; --auth-env-only is the opt-in restriction.
@@ -240,6 +241,27 @@ describe("agent command registration", () => {
         timeout: "600",
         json: true,
       }),
+      runtime,
+    );
+  });
+
+  it.each([
+    {
+      name: "the deprecated lean alias",
+      args: ["--local-model-lean"],
+      expectedProfile: "openclaw/small",
+    },
+    {
+      name: "an explicit profile combined with the deprecated alias",
+      args: ["--local-model-lean", "--agent-profile", "openclaw/large"],
+      expectedProfile: "openclaw/large",
+    },
+  ])("maps $name without changing explicit precedence", async ({ args, expectedProfile }) => {
+    await runCli(["agent", "exec", "fix it", ...args]);
+
+    expect(agentExecCommandMock).toHaveBeenCalledWith(
+      "fix it",
+      expect.objectContaining({ agentProfile: expectedProfile }),
       runtime,
     );
   });

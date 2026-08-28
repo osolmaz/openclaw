@@ -44,7 +44,10 @@ function createInput(disableTrajectory = false) {
     clientToolCount: 2,
     effectiveToolCount: 7,
     effectiveWorkspace: "/tmp/workspace",
-    localModelLeanEnabled: false,
+    agentProfile: {
+      profile: { id: "openclaw/base", ancestry: ["openclaw/base"], spec: { common: {} } },
+      selectionSource: "fallback",
+    },
     sessionAgentId: "main",
   };
 }
@@ -84,7 +87,12 @@ describe("prepareEmbeddedAttemptTrajectory", () => {
     expect(recorder.recordEvent).toHaveBeenNthCalledWith(
       1,
       "session.started",
-      expect.objectContaining({ toolCount: 7, clientToolCount: 2 }),
+      expect.objectContaining({
+        toolCount: 7,
+        clientToolCount: 2,
+        agentProfileId: "openclaw/base",
+        agentProfileSelectionSource: "fallback",
+      }),
     );
     expect(recorder.recordEvent).toHaveBeenNthCalledWith(2, "trace.metadata", {
       trace: "metadata",

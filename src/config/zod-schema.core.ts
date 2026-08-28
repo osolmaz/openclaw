@@ -11,7 +11,7 @@ import {
 } from "../secrets/ref-contract.js";
 import { isBuiltInModelProviderOverlayId } from "./model-provider-config.js";
 import type { ModelCompatConfig } from "./types.models.js";
-import { MODEL_APIS, MODEL_THINKING_FORMATS } from "./types.models.js";
+import { MODEL_APIS, MODEL_SIZE_CLASSES, MODEL_THINKING_FORMATS } from "./types.models.js";
 import { ENV_SECRET_REF_ID_RE } from "./types.secrets.js";
 import { createAllowDenyChannelRulesSchema } from "./zod-schema.allowdeny.js";
 import { sensitive } from "./zod-schema.sensitive.js";
@@ -427,6 +427,7 @@ const ModelDefinitionSchema = z
       })
       .strict()
       .optional(),
+    modelSizeClass: z.enum(MODEL_SIZE_CLASSES).optional(),
     contextWindow: z.number().positive().optional(),
     contextTokens: z.number().int().positive().optional(),
     maxTokens: z.number().positive().optional(),
