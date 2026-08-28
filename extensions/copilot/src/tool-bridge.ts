@@ -232,7 +232,7 @@ export async function createCopilotToolBridge(
       codeModeEngaged: false,
       agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
         sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
-        messageToolAvailable: false,
+        toolNames: [],
         runtimeSystemPrompt: attemptParams.extraSystemPrompt,
       }),
       promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY,
@@ -334,7 +334,7 @@ export async function createCopilotToolBridge(
     codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
     agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
       sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
-      messageToolAvailable: exposedTools.some((tool) => tool.name === "message"),
+      toolNames: exposedTools.map((tool) => tool.name),
       runtimeSystemPrompt: attemptParams.extraSystemPrompt,
     }),
     promptToolPolicy: {

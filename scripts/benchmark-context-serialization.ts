@@ -138,7 +138,7 @@ function buildSystemPrompt() {
   });
   const systemPrompt = buildAgentProfileSystemPrompt({
     resolvedProfile,
-    messageToolAvailable: true,
+    toolNames: tools.map((tool) => tool.name),
   });
   if (!systemPrompt || resolvedProfile.profile.id !== "openclaw/small") {
     throw new Error("the target model must resolve to openclaw/small");

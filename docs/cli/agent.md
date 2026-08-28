@@ -120,6 +120,7 @@ This is evaluation-only evidence, not a CI or release gate. Results do not chang
 - `--model <provider/model>`: explicit primary model
 - `--code-mode <mode>`: select `direct`, `auto`, or forced `code` tool mode
 - `--agent-profile <id>`: select a built-in Agent Profile for this run
+- `--local-model-lean`: deprecated alias for `--agent-profile openclaw/small`
 - `--thinking <level>`: one-run thinking level
 - `--fallback <provider/model>`: ordered fallback model; repeatable and requires `--model`
 - `--auth-env-only`: use only environment provider keys; skips stored credentials, external CLI credentials, and config entirely

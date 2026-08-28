@@ -349,6 +349,9 @@ function buildExecRunOverlay(params: {
   // defaults would let an inherited entry silently run the turn against a
   // different repository. Override every configured entry as well.
   const entries = Object.keys(params.base.agents?.entries ?? {});
+  const listedAgentOverlays = (params.base.agents?.list ?? []).map((entry) =>
+    Object.assign({}, entry, { workspace: params.cwd }, agentProfileId ? { agentProfileId } : {}),
+  );
   return {
     agents: {
       defaults: {
@@ -369,6 +372,7 @@ function buildExecRunOverlay(params: {
             ),
           }
         : {}),
+      ...(listedAgentOverlays.length > 0 ? { list: listedAgentOverlays } : {}),
     },
     // This process exits after one turn, so live skill invalidation cannot be
     // observed and would leave Chokidar retaining the otherwise-finished CLI.

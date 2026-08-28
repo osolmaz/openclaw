@@ -130,7 +130,7 @@ describe("small profile prompt behavior", () => {
   it("uses a minimum prompt instead of the standard OpenClaw prompt", () => {
     const prompt = buildAgentProfileSystemPrompt({
       resolvedProfile,
-      messageToolAvailable: false,
+      toolNames: ["tool_search", "tool_describe", "tool_call"],
     });
 
     expect(prompt).toContain("You are a personal assistant running inside OpenClaw.");
@@ -140,10 +140,22 @@ describe("small profile prompt behavior", () => {
     expect(prompt?.length).toBeLessThan(1_000);
   });
 
+  it("does not advertise tools that are absent from the exposed surface", () => {
+    const prompt = buildAgentProfileSystemPrompt({
+      resolvedProfile,
+      toolNames: [],
+    });
+
+    expect(prompt).not.toContain("tool_search");
+    expect(prompt).not.toContain("tool_describe");
+    expect(prompt).not.toContain("tool_call");
+    expect(prompt).not.toContain("message tool");
+  });
+
   it("preserves runtime-supplied system instructions", () => {
     const prompt = buildAgentProfileSystemPrompt({
       resolvedProfile,
-      messageToolAvailable: false,
+      toolNames: ["tool_search", "tool_describe", "tool_call"],
       runtimeSystemPrompt: "Complete the delegated task: RUNTIME_CONTEXT_MARKER",
     });
 
@@ -154,7 +166,7 @@ describe("small profile prompt behavior", () => {
     const prompt = buildAgentProfileSystemPrompt({
       resolvedProfile,
       sourceReplyDeliveryMode: "message_tool_only",
-      messageToolAvailable: true,
+      toolNames: ["message"],
     });
 
     expect(prompt).toContain("Send the visible reply with the message tool.");
@@ -165,7 +177,7 @@ describe("small profile prompt behavior", () => {
     expect(
       buildAgentProfileSystemPrompt({
         resolvedProfile: resolveAgentProfile({}),
-        messageToolAvailable: false,
+        toolNames: [],
       }),
     ).toBeUndefined();
   });

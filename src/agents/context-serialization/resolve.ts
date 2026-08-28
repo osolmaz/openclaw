@@ -32,7 +32,7 @@ export function resolveContextSerialization(params: {
     return { mode: defaultMode, source: "defaults-explicit" };
   }
 
-  const profileMode = params.resolvedProfile.profile.spec.common.contextSerialization;
+  const profileMode = params.resolvedProfile.profile.spec["openclaw.ai"]?.contextSerialization;
   if (profileMode !== undefined) {
     return { mode: profileMode, source: "agent-profile" };
   }

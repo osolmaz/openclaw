@@ -1891,6 +1891,63 @@ describe("prepareCliRunContext", () => {
     expect(promptBuildParams?.prompt).toBe("latest ask");
   });
 
+  it.each([
+    {
+      name: "explicit config",
+      config: { agents: { defaults: { contextSerialization: "lean" } } },
+    },
+    {
+      name: "the selected small profile",
+      config: { agents: { defaults: { agentProfileId: "openclaw/small" } } },
+    },
+  ] satisfies Array<{ name: string; config: OpenClawConfig }>)(
+    "uses lean current-turn context from $name",
+    async ({ config }) => {
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:test",
+        agentId: "main",
+        trigger: "user",
+        transcriptPrompt: "latest ask",
+        currentInboundContext: {
+          text: "Verbose current-turn context",
+          leanText: "Lean current-turn context",
+        },
+        config,
+      });
+
+      expect(context.params.prompt).toBe("Lean current-turn context\n\nlatest ask");
+    },
+  );
+
+  it("uses lean current-turn context from model-size profile selection", async () => {
+    setCliRunnerPrepareTestDeps({
+      loadManifestModelCatalog: vi.fn(() => [
+        {
+          id: "test-model",
+          name: "Test Small Model",
+          provider: "test-cli",
+          modelSizeClass: "small",
+        },
+      ]),
+    });
+
+    const context = await fixture.prepare({
+      provider: "test-cli",
+      model: "test-model",
+      sessionKey: "agent:main:test",
+      agentId: "main",
+      trigger: "user",
+      transcriptPrompt: "latest ask",
+      currentInboundContext: {
+        text: "Verbose current-turn context",
+        leanText: "Lean current-turn context",
+      },
+      config: {},
+    });
+
+    expect(context.params.prompt).toBe("Lean current-turn context\n\nlatest ask");
+  });
+
   it("uses compact current-turn context when a room event resumes a CLI session", async () => {
     fixture.appendTranscript({
       id: "msg-1",
@@ -2430,8 +2487,10 @@ describe("prepareCliRunContext", () => {
     const context = await fixture.prepare({
       sessionKey: "agent:main:test",
       currentInboundContext: {
-        text: "Conversation info: ⟦openclaw:ctx⟧\nchannel=telegram",
+        text: "Verbose conversation info: ⟦openclaw:ctx⟧\nchannel=telegram",
+        leanText: "Lean conversation info: channel=telegram",
       },
+      config: { agents: { defaults: { contextSerialization: "lean" } } },
       extraSystemPrompt: "new stable prompt",
       extraSystemPromptStatic: "new stable prompt",
       cliSessionBinding: {
@@ -2451,6 +2510,8 @@ describe("prepareCliRunContext", () => {
       "OpenClaw resumed this CLI session after prompt content changed.",
     );
     expect(context.params.prompt).toContain("changed=system-prompt");
+    expect(context.params.prompt).toContain("Lean conversation info: channel=telegram");
+    expect(context.params.prompt).not.toContain("Verbose conversation info");
     expect(context.params.prompt).toContain("latest ask");
   });
 

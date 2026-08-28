@@ -61,9 +61,11 @@ Missing configuration resolves to `default`. An explicit `default` is a real val
 
 The setting is added to OpenClaw config types, Zod schemas, schema labels, and help text. Unknown values fail schema validation.
 
-## Agent Profiles contract
+## Agent Profiles boundary
 
-Agent Profiles v1 adds the portable field `spec.common.contextSerialization` with the same two values. The format remains `agentprofiles.io/v1`.
+The `agentprofiles` core package is independent of OpenClaw. It owns the profile resource envelope, portable `spec.common` fields, generic domain-named objects, parsing, validation, and generic profile mechanics. It treats each domain-named section as an opaque JSON object. It does not define, type, document, validate, default, or merge OpenClaw fields.
+
+OpenClaw owns the `openclaw.ai` section:
 
 ```yaml
 apiVersion: agentprofiles.io/v1
@@ -72,13 +74,23 @@ metadata:
   namespace: openclaw
   name: small
 spec:
-  common:
+  common: {}
+  openclaw.ai:
     contextSerialization: lean
+    toolProfile: lean
 ```
 
-The field uses scalar replacement during `extends` resolution. If a parent sets `lean`, a child can set `default` to reset it. If the child omits the field, it inherits the parent value.
+OpenClaw strictly validates this section, applies defaults, resolves its field inheritance, and maps the result to runtime behavior. If a parent sets `contextSerialization: lean`, a child can set `default` to reset it. If a child omits the field, it inherits the parent value. Agent Profiles preserves profile ancestry and the raw extension values but does not merge fields inside the section.
 
-The built-in `openclaw/small` profile sets `lean`. It keeps its existing minimal system prompt, lean tool surface, and Tool Search defaults. This change does not alter automatic provider and model bindings or the model-size selector.
+The built-in `openclaw/small` profile sets `lean` in `openclaw.ai`. It keeps its existing minimal system prompt, lean tool surface, and Tool Search defaults. This change does not alter automatic provider and model bindings or the model-size selector.
+
+## Package and repository boundary
+
+Release `agentprofiles` 0.1.0 from `agentprofiles/agentprofiles` through `.github/workflows/publish.yml`. The release tag must be `v0.1.0`, the tagged commit must be on the default branch, and npm publication must use the configured GitHub OIDC trusted publisher with provenance. Verify the registry package and attestation after publication.
+
+OpenClaw then uses the exact `agentprofiles@0.1.0` npm package. It must not use a Git dependency, local path, or unpublished archive. The dependency direction is OpenClaw to Agent Profiles. Agent Profiles must not import OpenClaw code or contain an OpenClaw adapter.
+
+Keep the OpenClaw adapter in `src/agents/agent-profiles/`. Use `builtins.ts` for built-in profile resources, `openclaw-extension.ts` for strict extension parsing and merge behavior, and focused tests beside those modules. Keep the current top-level Agent Profile entry point only where it remains useful as a facade. Do not create a global mutable adapter registry or a separate adapter package.
 
 ## Resolution
 
@@ -241,19 +253,23 @@ node --import tsx scripts/benchmark-context-serialization.ts
 
 ## Implementation steps
 
-1. Add `contextSerialization` to `src/config/types.agent-defaults.ts`, `src/config/types.agents.ts`, `src/config/zod-schema.agent-defaults.ts`, `src/config/zod-schema.agent-runtime.ts`, `src/config/schema.labels.ts`, and `src/config/schema.help.core.ts`. Add schema and help tests.
-2. Add `spec.common.contextSerialization` to Agent Profiles v1 types, JSON Schema, fixtures, parser and resolver tests, and the format specification. Test omission, inheritance, override, invalid values, and explicit `default` reset.
-3. Add one resolver in the existing Agent Profile and agent-scope configuration path. Test all precedence sources. Keep automatic model and model-size selection unchanged.
-4. Set the built-in `openclaw/small` profile to `lean`. Keep its current prompt, tool profile, and Tool Search behavior. Enable this only after the measurement and capability gates pass.
-5. Add the provider-neutral modules under `src/agents/context-serialization/`. Route `default` through the old path first and require final-request parity.
-6. Add durable-identity deduplication between the active transcript and channel backlog. Keep entries when identity is weak or missing.
-7. Keep the existing canonical session-history merge for `default`. At the shared serialization boundary, remove its `session:` entries from `lean` after their durable transcript ids prove their origin. This avoids a second profile resolver in Discord while keeping absent backlog, ambiguous entries, speakers, replies, and threads.
-8. Build the protected lean current-turn block from the allowlist. Keep escaping and injection tests.
-9. Preserve tool and delivery continuity through the serializer. Keep policy logic out of provider adapters.
-10. Add mode, source, size, deduplication, and provider-token diagnostics without private raw content.
-11. Add final-request fixtures and exact Qwen tokenizer measurements. Apply the stated rollout gates.
-12. Update focused config, Agent Profile, token-use, and context diagnostic documentation after implementation. Record any shipped departure from this plan.
-13. Run focused tests, relevant repository checks, Agent Profiles `make check`, Pi Reviewer against `main` until it has no P0 or P1 findings, and CI. Do not merge.
+1. Keep `contextSerialization` in the existing OpenClaw config types, Zod schemas, schema labels, and help text. Keep schema and help tests.
+2. In `agentprofiles/agentprofiles`, remove OpenClaw-specific types, JSON Schema definitions, fixtures, validation rules, and specification prose. Keep domain-named sections as opaque JSON objects accepted by the generic key pattern. Keep `spec.common` limited to portable fields. Add generic extension pass-through fixtures, tests that reject consumer fields under `spec.common`, and contributor guidance that states this ownership rule.
+3. Prepare `agentprofiles` 0.1.0 with the MIT license, package metadata, harness-agnostic README examples, and a harness-agnostic packed-package smoke test. Run Schemator smoke validation and `make check`. Update PR 2, inspect review comments and CI, squash merge it, create GitHub release `v0.1.0`, and verify npm publication and provenance from the OIDC workflow.
+4. Add the exact `agentprofiles@0.1.0` npm dependency to OpenClaw after the package is visible in the registry. Use its portable resource types and validation for built-in resources.
+5. Refactor the built-in profile code into `src/agents/agent-profiles/` as far as the existing code supports cleanly. Put built-in resources in `builtins.ts`. Put strict `openclaw.ai` parsing, types, defaults, and merge behavior in `openclaw-extension.ts`. Keep focused tests beside those modules.
+6. Keep portable profile ancestry and `spec.common` resolution separate from OpenClaw extension resolution. Test extension omission, inheritance, override, invalid values, and explicit `default` reset. Do not add a global adapter registry or a separate adapter package.
+7. Keep one context serialization resolver in the existing Agent Profile and agent-scope configuration path. Test explicit per-agent config, explicit defaults, the resolved OpenClaw profile extension, and fallback precedence. Keep automatic model and model-size selection unchanged.
+8. Keep the built-in `openclaw/small` profile set to `lean` under `openclaw.ai`. Preserve its current prompt, tool profile, and Tool Search behavior.
+9. Keep the provider-neutral modules under `src/agents/context-serialization/`. Route `default` through the old path and require final-request parity.
+10. Keep durable-identity deduplication between the active transcript and channel backlog. Keep entries when identity is weak or missing.
+11. Keep the existing canonical session-history merge for `default`. At the shared serialization boundary, remove its `session:` entries from `lean` after their durable transcript ids prove their origin. This avoids a second profile resolver in Discord while keeping absent backlog, ambiguous entries, speakers, replies, and threads.
+12. Keep the protected lean current-turn block built from the allowlist, with escaping and injection tests.
+13. Preserve tool and delivery continuity through the serializer. Keep policy logic out of provider adapters.
+14. Keep mode, source, size, deduplication, and provider-token diagnostics without private raw content.
+15. Keep final-request fixtures and exact Qwen tokenizer measurements. Apply the stated rollout gates.
+16. Update focused config, Agent Profile, token-use, and context diagnostic documentation. Record the corrected Agent Profiles ownership boundary.
+17. Run focused and full checks in both repositories. Run Pi Reviewer against each appropriate base until no P0 or P1 findings remain, and address proportionate P2 findings. Push OpenClaw changes only to `osolmaz/openclaw` on the existing `feature/agent-profiles-initial` branch and update PR 3. Do not open an upstream PR, merge the OpenClaw PR, deploy Bob, or release OpenClaw.
 
 ## Rollout and failure behavior
 
@@ -277,6 +293,10 @@ This release does not add:
 - generic profile settings maps;
 - provider, tokenizer, llama.cpp, prompt-cache, endpoint, credential, serving, or hardware changes;
 - broad channel optimization beyond the shared boundary and the Discord implementation;
-- package publication, release, deployment, upstream submission, or merge work.
+- an OpenClaw release or deployment;
+- an upstream OpenClaw submission;
+- a merge of the OpenClaw fork PR.
+
+The only package release in scope is `agentprofiles` 0.1.0 from the Agent Profiles repository.
 
 The Qwen benchmark proves the measured Qwen case only. It does not prove token-optimal behavior for other models or providers.

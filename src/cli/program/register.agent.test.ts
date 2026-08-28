@@ -245,6 +245,27 @@ describe("agent command registration", () => {
     );
   });
 
+  it.each([
+    {
+      name: "the deprecated lean alias",
+      args: ["--local-model-lean"],
+      expectedProfile: "openclaw/small",
+    },
+    {
+      name: "an explicit profile combined with the deprecated alias",
+      args: ["--local-model-lean", "--agent-profile", "openclaw/large"],
+      expectedProfile: "openclaw/large",
+    },
+  ])("maps $name without changing explicit precedence", async ({ args, expectedProfile }) => {
+    await runCli(["agent", "exec", "fix it", ...args]);
+
+    expect(agentExecCommandMock).toHaveBeenCalledWith(
+      "fix it",
+      expect.objectContaining({ agentProfile: expectedProfile }),
+      runtime,
+    );
+  });
+
   it("restricts credentials and config to the process environment with --auth-env-only", async () => {
     await runCli(["agent", "exec", "fix it", "--auth-env-only"]);
 

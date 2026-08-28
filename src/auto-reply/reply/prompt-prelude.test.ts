@@ -198,6 +198,12 @@ describe("buildReplyPromptEnvelope", () => {
     expect(envelope.currentInboundContext?.resumableText).not.toContain(
       "Conversation context (chronological, selected for current message):",
     );
+    expect(envelope.currentInboundContext?.leanResumableText).toBe(
+      envelope.currentInboundContext?.resumableText,
+    );
+    expect(envelope.currentInboundContext?.leanResumableText).not.toContain(
+      "Conversation context (chronological, selected for current message):",
+    );
   });
 
   it("uses attributed coalesced room-event lines for current event and transcript", () => {

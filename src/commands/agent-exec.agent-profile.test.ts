@@ -12,4 +12,31 @@ describe("agent exec Agent Profile override", () => {
     expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
     expect(config.agents?.entries?.ops?.agentProfileId).toBe("openclaw/small");
   });
+
+  it("overrides list-based agent profile selections", () => {
+    const config = buildExecRunConfig({
+      base: {
+        agents: {
+          list: [
+            {
+              id: "ops",
+              model: "openai/gpt-5.6-sol",
+              agentProfileId: "openclaw/large",
+            },
+          ],
+        },
+      },
+      cwd: "/run/here",
+      opts: { agentProfile: "openclaw/small" },
+    });
+
+    expect(config.agents?.list).toEqual([
+      expect.objectContaining({
+        id: "ops",
+        model: "openai/gpt-5.6-sol",
+        workspace: "/run/here",
+        agentProfileId: "openclaw/small",
+      }),
+    ]);
+  });
 });

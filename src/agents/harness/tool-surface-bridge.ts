@@ -44,7 +44,7 @@ export type AgentHarnessToolSurfaceRuntime = {
   agentProfile: ResolvedAgentProfile;
   buildAgentProfileSystemPrompt: (params: {
     sourceReplyDeliveryMode?: string;
-    messageToolAvailable: boolean;
+    toolNames: Iterable<string>;
     runtimeSystemPrompt?: string;
   }) => string | undefined;
   compactTools: (

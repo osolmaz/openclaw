@@ -292,7 +292,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   const profileSystemPrompt = buildAgentProfileSystemPrompt({
     resolvedProfile: params.agentProfile,
     sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
-    messageToolAvailable: params.effectiveTools.some((tool) => tool.name === "message"),
+    toolNames: params.effectiveTools.map((tool) => tool.name),
     runtimeSystemPrompt: extraSystemPrompt,
   });
   const attemptSystemPrompt = buildAttemptSystemPrompt({

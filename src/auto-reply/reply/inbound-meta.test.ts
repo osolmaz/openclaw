@@ -451,6 +451,8 @@ describe("buildInboundUserContextPrefix", () => {
       text: ["Conversation info:", goalContext, "Current message:\nmessage_id=next-turn"].join(
         "\n\n",
       ),
+      leanText: [goalContext, "Current message:\nmessage_id=next-turn"].join("\n\n"),
+      leanResumableText: [goalContext, "Current event:\nmessage_id=next-turn"].join("\n\n"),
       injectedGoalContexts: [goalContext],
     };
 
@@ -459,6 +461,8 @@ describe("buildInboundUserContextPrefix", () => {
     expect(refreshed?.text).toContain("Conversation info:");
     expect(refreshed?.text).toContain("Current message:\nmessage_id=next-turn");
     expect(refreshed?.text).not.toContain("Active goal:");
+    expect(refreshed?.leanText).toBe("Current message:\nmessage_id=next-turn");
+    expect(refreshed?.leanResumableText).toBe("Current event:\nmessage_id=next-turn");
   });
 
   it("adds a goal activated while a queued turn waited for admission", () => {
@@ -1555,6 +1559,23 @@ describe("buildInboundUserContextPrefix", () => {
       ].join("\n"),
     );
     expect(text).not.toContain("Chat history since last reply: ⟦openclaw:ctx⟧\n```json");
+  });
+
+  it("caps lean inbound history to the most recent bounded tail", () => {
+    const projection = buildLeanInboundUserContextPrefix({
+      ChatType: "group",
+      InboundHistory: Array.from({ length: 25 }, (_, index) => ({
+        messageId: `msg-${index}`,
+        sender: `sender-${index}`,
+        body: `body-${index}`,
+      })),
+    } as TemplateContext);
+
+    const historyLines = projection.text.split("\n").filter((line) => line.startsWith("#msg-"));
+    expect(historyLines).toHaveLength(20);
+    expect(historyLines[0]).toContain("#msg-5 sender-5: body-5");
+    expect(historyLines.at(-1)).toContain("#msg-24 sender-24: body-24");
+    expect(projection.text).not.toContain("#msg-4 sender-4: body-4");
   });
 
   it("removes transcript-backed history by durable identity in lean mode", () => {

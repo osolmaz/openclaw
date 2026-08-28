@@ -14,6 +14,31 @@ surface.
 Agent Profiles do not select a model or change provider transport, credentials,
 context-window settings, or local serving configuration.
 
+## Ownership
+
+OpenClaw uses the `agentprofiles` package for the portable resource envelope,
+`spec.common`, domain-section shape, and base validation. The package treats
+domain-named sections as opaque JSON objects. It does not define or validate
+OpenClaw fields.
+
+OpenClaw owns `spec["openclaw.ai"]`. OpenClaw strictly validates this section
+and resolves it with OpenClaw-owned defaults and inheritance rules. The resolved
+values select OpenClaw runtime behavior:
+
+```yaml
+spec:
+  common:
+    systemPrompt:
+      text: You are a concise assistant.
+  openclaw.ai:
+    contextSerialization: lean
+    toolProfile: lean
+```
+
+The OpenClaw adapter stays in the OpenClaw repository. There is no global
+adapter registry or separate adapter package. Portable profile resolution and
+OpenClaw extension resolution remain separate.
+
 ## Built-in profiles
 
 | Profile           | Parent          | Initial behavior                                                        |
@@ -136,9 +161,9 @@ configuration always wins.
 The profile keeps `exec` directly visible. Normal tool policy, sandboxing, and
 exec approvals still apply.
 
-The profile selects `contextSerialization: "lean"`. Lean serialization removes
-active-session copies from channel history only when their durable message IDs
-prove that they are duplicates. It keeps unmatched backlog, ambiguous entries,
+The profile selects `contextSerialization: "lean"` from its `openclaw.ai`
+section. Lean serialization removes active-session copies from channel history
+only when their durable message IDs prove that they are duplicates. It keeps unmatched backlog, ambiguous entries,
 speaker attribution, reply and thread facts, mentions, delivery facts, tool
 calls, and tool results. It also replaces the verbose current-turn metadata
 wrapper with a short protected block. Set `contextSerialization: "default"` in

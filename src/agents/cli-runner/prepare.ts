@@ -54,6 +54,7 @@ import {
   resolveAdmittedRunActiveAssertion,
   resolvePreparedRunAdmission,
 } from "../admitted-run-context.js";
+import { resolveAgentProfile } from "../agent-profiles.js";
 import { hasAgentRosterProperty, resolveAgentWorkspaceDir } from "../agent-scope-config.js";
 import { resolveAgentDir, resolveSessionAgentIds } from "../agent-scope.js";
 import { hasUsableOAuthCredential } from "../auth-profiles/credential-state.js";
@@ -87,6 +88,7 @@ import {
   claudeCliSessionTranscriptHasContent,
   claudeCliSessionTranscriptHasOrphanedToolUse,
 } from "../command/attempt-execution.helpers.js";
+import { resolveContextSerialization } from "../context-serialization/resolve.js";
 import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
@@ -200,6 +202,22 @@ const defaultPrepareDeps = {
 };
 const prepareDeps = { ...defaultPrepareDeps };
 
+function findCliModelCatalogEntry(params: {
+  catalog: ModelCatalogEntry[];
+  providers: string[];
+  models: string[];
+}): ModelCatalogEntry | undefined {
+  for (const provider of params.providers) {
+    for (const model of params.models) {
+      const entry = findModelCatalogEntry(params.catalog, { provider, modelId: model });
+      if (entry) {
+        return entry;
+      }
+    }
+  }
+  return undefined;
+}
+
 function findSelectableContextWindowEntry(params: {
   catalog: ModelCatalogEntry[];
   providers: string[];
@@ -262,7 +280,15 @@ function prependCliSessionDriftUserContext(
   return {
     ...context,
     text: [note, context.text].join("\n\n"),
+    ...(context.leanText !== undefined
+      ? { leanText: [note, context.leanText].filter(Boolean).join("\n\n") }
+      : {}),
     ...(context.resumableText ? { resumableText: [note, context.resumableText].join("\n\n") } : {}),
+    ...(context.leanResumableText !== undefined
+      ? {
+          leanResumableText: [note, context.leanResumableText].filter(Boolean).join("\n\n"),
+        }
+      : {}),
   };
 }
 
@@ -857,16 +883,24 @@ export async function prepareCliRunContext(
   // resolveAnthropicFixedContextWindow deliberately ignores catalog scalars,
   // so the selected (or default) option must apply after it or a 200k session
   // would auto-compact against a 1M budget.
-  const selectableContextEntry = findSelectableContextWindowEntry({
-    catalog: params.config
-      ? prepareDeps.loadManifestModelCatalog({ config: params.config, workspaceDir })
-      : [],
-    providers: uniqueStrings(
-      [params.provider, backendResolved.modelProvider].filter(
-        (provider): provider is string => typeof provider === "string" && provider.length > 0,
-      ),
+  const manifestModelCatalog = params.config
+    ? prepareDeps.loadManifestModelCatalog({ config: params.config, workspaceDir })
+    : [];
+  const catalogProviders = uniqueStrings(
+    [modelProvider, backendResolved.modelProvider, params.provider].filter(
+      (provider): provider is string => typeof provider === "string" && provider.length > 0,
     ),
-    models: uniqueStrings([modelId, normalizedCatalogModel]),
+  );
+  const catalogModels = uniqueStrings([modelId, normalizedCatalogModel]);
+  const agentProfileModelSizeClass = findCliModelCatalogEntry({
+    catalog: manifestModelCatalog,
+    providers: catalogProviders,
+    models: catalogModels,
+  })?.modelSizeClass;
+  const selectableContextEntry = findSelectableContextWindowEntry({
+    catalog: manifestModelCatalog,
+    providers: catalogProviders,
+    models: catalogModels,
   });
   if (selectableContextEntry) {
     const contextWindowProfile = resolveModelContextWindowProfile({
@@ -1698,15 +1732,30 @@ export async function prepareCliRunContext(
         params.currentInboundContext,
         reusableCliSession,
       );
+      const resolvedProfile = resolveAgentProfile({
+        config: params.config,
+        agentId: sessionAgentId,
+        sessionKey: params.sessionKey,
+        modelProvider,
+        modelId,
+        modelSizeClass: agentProfileModelSizeClass,
+      });
+      const contextSerialization = resolveContextSerialization({
+        config: params.config,
+        agentId: sessionAgentId,
+        resolvedProfile,
+      });
       const fullCurrentInboundPrompt = buildCurrentInboundPrompt({
         context: currentInboundContext,
         prompt: preparedPrompt,
+        serialization: contextSerialization,
       });
       const runCurrentInboundPrompt = buildCurrentInboundPrompt({
         context: currentInboundContext,
         prompt: preparedPrompt,
         preferResumableText:
           params.currentInboundEventKind === "room_event" && Boolean(reusableCliSessionId),
+        serialization: contextSerialization,
       });
       historyPromptCurrentTurn = annotateInterSessionPromptText(
         fullCurrentInboundPrompt,

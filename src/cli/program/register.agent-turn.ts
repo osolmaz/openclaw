@@ -143,6 +143,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
       "--agent-profile <id>",
       "Agent Profile: auto | openclaw/base | openclaw/small | openclaw/medium | openclaw/large",
     )
+    .option("--local-model-lean", "Deprecated alias for --agent-profile openclaw/small", false)
     .option(
       "--thinking <level>",
       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
@@ -188,6 +189,8 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
         | undefined;
       const execOpts = {
         ...opts,
+        agentProfile:
+          opts.agentProfile ?? (opts.localModelLean === true ? "openclaw/small" : undefined),
         messageFile: opts.messageFile ?? parentOpts?.messageFile,
         model: opts.model ?? parentOpts?.model,
         thinking: opts.thinking ?? parentOpts?.thinking,

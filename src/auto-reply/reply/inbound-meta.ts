@@ -97,21 +97,29 @@ export function refreshActiveGoalContext(
     injectedGoals,
     activeGoalContext,
   });
-  const refreshedResumableText = context.resumableText
-    ? refreshActiveGoalContextText({
-        text: context.resumableText,
-        injectedGoals,
-        activeGoalContext,
-      })
-    : undefined;
+  const refreshVariant = (text: string | undefined) =>
+    text === undefined
+      ? undefined
+      : refreshActiveGoalContextText({
+          text,
+          injectedGoals,
+          activeGoalContext,
+        });
+  const refreshedLeanText = refreshVariant(context.leanText);
+  const refreshedResumableText = refreshVariant(context.resumableText);
+  const refreshedLeanResumableText = refreshVariant(context.leanResumableText);
   if (!refreshedText) {
     return undefined;
   }
   return {
     ...context,
     text: refreshedText,
+    ...(refreshedLeanText !== undefined ? { leanText: refreshedLeanText } : {}),
     ...(refreshedResumableText !== undefined
       ? { resumableText: refreshedResumableText || undefined }
+      : {}),
+    ...(refreshedLeanResumableText !== undefined
+      ? { leanResumableText: refreshedLeanResumableText }
       : {}),
     injectedGoalContexts: activeGoalContext ? [activeGoalContext] : undefined,
   };
@@ -762,7 +770,7 @@ export function buildLeanInboundUserContextPrefix(
     );
   }
 
-  for (const entry of ctx.InboundHistory ?? []) {
+  for (const entry of (ctx.InboundHistory ?? []).slice(-MAX_UNTRUSTED_HISTORY_ENTRIES)) {
     addHistoryMessage({
       message_id: entry.messageId,
       sender: entry.sender,

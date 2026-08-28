@@ -206,6 +206,9 @@ export function buildReplyPromptEnvelopeBase(
     ? buildRoomEventContext(params, inboundUserContext)
     : [inboundUserContext, resolvePerTurnDeliveryDirective(params)].filter(Boolean).join("\n\n");
   const leanInboundUserContext = params.leanInboundUserContext ?? inboundUserContext;
+  const leanResumableRoomEventContext = isRoomEvent
+    ? buildRoomEventContext(params, buildResumableRoomContext(leanInboundUserContext))
+    : undefined;
   const leanInboundContextText = isRoomEvent
     ? buildRoomEventContext(params, leanInboundUserContext)
     : [leanInboundUserContext, resolvePerTurnDeliveryDirective(params)]
@@ -240,7 +243,9 @@ export function buildReplyPromptEnvelopeBase(
           text: currentInboundContextText,
           leanText: leanInboundContextText,
           ...(resumableRoomEventContext ? { resumableText: resumableRoomEventContext } : {}),
-          ...(isRoomEvent ? { leanResumableText: leanInboundContextText } : {}),
+          ...(leanResumableRoomEventContext
+            ? { leanResumableText: leanResumableRoomEventContext }
+            : {}),
           promptJoiner: params.inboundUserContextPromptJoiner,
           ...(params.leanInboundContextStats
             ? { serializationStats: params.leanInboundContextStats }

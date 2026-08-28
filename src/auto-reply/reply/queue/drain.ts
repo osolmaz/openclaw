@@ -614,25 +614,54 @@ function collectCurrentInboundContext(items: FollowupRun[]): FollowupRun["curren
   if (contexts.length === 1) {
     return contexts[0]?.context;
   }
-  const renderField = (field: "text" | "resumableText") => {
+  const renderContext = (
+    select: (context: NonNullable<FollowupRun["currentInboundContext"]>) => string | undefined,
+  ) => {
     const blocks = contexts.flatMap(({ context, index }) => {
-      const value = context[field];
+      const value = select(context);
       return value ? [`Queued #${index + 1} context:\n${value}`] : [];
     });
     return blocks.length > 0 ? blocks.join("\n\n") : undefined;
   };
-  const text = renderField("text");
+  const text = renderContext((context) => context.text);
   if (!text) {
     return undefined;
   }
-  const resumableText = renderField("resumableText");
+  const resumableText = renderContext((context) => context.resumableText);
+  const hasLeanProjection = contexts.some(
+    ({ context }) => context.leanText !== undefined || context.leanResumableText !== undefined,
+  );
+  const leanText = hasLeanProjection
+    ? renderContext((context) => context.leanText ?? context.text)
+    : undefined;
+  const leanResumableText = hasLeanProjection
+    ? renderContext(
+        (context) =>
+          context.leanResumableText ?? context.leanText ?? context.resumableText ?? context.text,
+      )
+    : undefined;
   const injectedGoalContexts = [
     ...new Set(contexts.flatMap(({ context }) => context.injectedGoalContexts ?? [])),
   ];
+  const serializationStats = contexts.reduce<
+    NonNullable<FollowupRun["currentInboundContext"]>["serializationStats"]
+  >((total, { context }) => {
+    const stats = context.serializationStats;
+    if (!stats) {
+      return total;
+    }
+    return {
+      removedSessionMessages: (total?.removedSessionMessages ?? 0) + stats.removedSessionMessages,
+      deduplicatedMessages: (total?.deduplicatedMessages ?? 0) + stats.deduplicatedMessages,
+    };
+  }, undefined);
   return {
     text,
+    ...(leanText !== undefined ? { leanText } : {}),
     ...(resumableText ? { resumableText } : {}),
+    ...(leanResumableText !== undefined ? { leanResumableText } : {}),
     promptJoiner: "\n\n",
+    ...(serializationStats ? { serializationStats } : {}),
     ...(injectedGoalContexts.length > 0 ? { injectedGoalContexts } : {}),
   };
 }
