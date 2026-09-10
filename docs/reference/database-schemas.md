@@ -24,6 +24,12 @@ reader job. Open the page that matches your task and stay there.
 | [State schema history](/reference/database-schemas/state-schema-history)                       | Shared state database schema versions, their changes, and their first releases.                          |
 | [Integrity, troubleshooting, and recovery](/reference/database-schemas/integrity-and-recovery) | Integrity checks, common database errors, and the supported downgrade recovery path.                     |
 
+## Related
+
+- [Backups](/install/backups) — archives, per-database snapshots, scheduling, and offsite copies for the databases described here
+- [Updating](/install/updating) — updating safely, including the verified backup to take before a schema bump, and the rollback strategy
+- [Doctor](/gateway/doctor) — the repair and migration tool that fixes stale config/state and reports health problems
+
 ## Where each section moved
 
 Every section heading from the previous single-page version keeps its anchor
@@ -53,6 +59,7 @@ page that now holds the content.
 - <a id="keep-engine-specific-capabilities-owned" />[Keep engine-specific capabilities owned](/reference/database-schemas/storage-changes#keep-engine-specific-capabilities-owned)
 - <a id="review-checkpoint-for-material-changes" />[Review checkpoint for material changes](/reference/database-schemas/storage-changes#review-checkpoint-for-material-changes)
 - <a id="preflight-a-target-release" />[Preflight a target release](/reference/database-schemas/storage-changes#preflight-a-target-release)
+  - <a id="preflight-an-explicit-agent-copy" />[Preflight an explicit agent copy](/reference/database-schemas/storage-changes#preflight-an-explicit-agent-copy)
 - <a id="agent-schema-history" />[Agent schema history](/reference/database-schemas/agent-schema-history#agent-schema-history)
 - <a id="creator-namespace-migration" />[Creator namespace migration](/reference/database-schemas/agent-schema-history#creator-namespace-migration)
 - <a id="participant-identity-migration" />[Participant identity migration](/reference/database-schemas/agent-schema-history#participant-identity-migration)

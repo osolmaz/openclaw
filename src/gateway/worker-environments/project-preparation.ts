@@ -44,13 +44,19 @@ export function readWorkerProjectSnapshot(value: unknown): WorkerProjectSnapshot
     !/^[a-f0-9]{64}$/u.test(value.key) ||
     typeof value.baseCommit !== "string" ||
     !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(value.baseCommit) ||
+    (value.label !== undefined && typeof value.label !== "string") ||
     typeof value.root !== "string" ||
     value.root.length > 4096 ||
     !path.isAbsolute(value.root)
   ) {
     throw new Error("Worker environment has an invalid project preparation snapshot");
   }
-  return { key: value.key, root: value.root, baseCommit: value.baseCommit };
+  return {
+    key: value.key,
+    root: value.root,
+    baseCommit: value.baseCommit,
+    ...(value.label !== undefined ? { label: value.label } : {}),
+  };
 }
 
 export function createWorkerProjectPreparation(params: {
@@ -59,6 +65,8 @@ export function createWorkerProjectPreparation(params: {
   preparation?: {
     key: string;
     cacheKey: string;
+    purpose: "session" | "reserve";
+    demandAtMs: number;
     setupRecipe?: string;
     runSetupScript?: boolean;
   };
@@ -78,6 +86,9 @@ export function createWorkerProjectPreparation(params: {
     preparation &&
     (!/^[a-f0-9]{64}$/u.test(preparation.key) ||
       !/^[a-f0-9]{64}$/u.test(preparation.cacheKey) ||
+      (preparation.purpose !== "session" && preparation.purpose !== "reserve") ||
+      !Number.isSafeInteger(preparation.demandAtMs) ||
+      preparation.demandAtMs < 0 ||
       (preparation.setupRecipe !== undefined &&
         !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(preparation.setupRecipe)))
   ) {
@@ -275,11 +286,14 @@ export function createWorkerProjectPreparation(params: {
     project: {
       key: params.project.key,
       baseCommit: params.project.baseCommit,
+      ...(params.project.label !== undefined ? { label: params.project.label } : {}),
       ...(preparation
         ? {
             preparation: {
               key: preparation.key,
               cacheKey: preparation.cacheKey,
+              purpose: preparation.purpose,
+              demandAtMs: preparation.demandAtMs,
             },
           }
         : {}),
