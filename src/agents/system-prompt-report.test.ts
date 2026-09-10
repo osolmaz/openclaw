@@ -44,8 +44,7 @@ describe("buildSystemPromptReport", () => {
       bootstrapMaxChars: 20_000,
       agentProfile: { id: "openclaw/small", selectionSource: "model" },
       systemPrompt: "system",
-      bootstrapFiles: [],
-      injectedFiles: [],
+      injectedWorkspaceFiles: [],
       skillsPrompt: "",
       tools: [],
     });
