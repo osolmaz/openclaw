@@ -146,6 +146,7 @@ function buildExecRunOverlay(params: {
   const listedAgentOverlays = (params.base.agents?.list ?? []).map((entry) =>
     Object.assign({}, entry, { workspace: params.cwd }, agentProfileId ? { agentProfileId } : {}),
   );
+  // SAFETY: every overlay field is a validated OpenClaw config field.
   return {
     agents: {
       defaults: {
@@ -251,7 +252,9 @@ export function buildExecRunConfig(params: {
 }): OpenClawConfig {
   const opts = params.opts ?? {};
   const base = stripInheritedAgentLocations(params.base);
+  // SAFETY: both merge inputs conform to OpenClawConfig.
   const withDefaults = mergeDeep(buildExecConfigDefaults(), base) as OpenClawConfig;
+  // SAFETY: the base config and invocation overlay conform to OpenClawConfig.
   return mergeDeep(
     withDefaults,
     buildExecRunOverlay({ base, cwd: params.cwd, opts }),
