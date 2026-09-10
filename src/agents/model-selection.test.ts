@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import type { OpenClawConfig } from "../config/types.js";
 import { resetLogger, setLoggerOverride } from "../logging/logger.js";
 import { createWarnLogCapture } from "../logging/test-helpers/warn-log-capture.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import { resolveAgentHarnessPolicy } from "./harness/policy.js";
 import {
   getModelRefStatus as getNarrowModelRefStatus,
@@ -33,70 +34,72 @@ import {
 } from "./model-selection.js";
 import { createModelVisibilityPolicy } from "./model-visibility-policy.js";
 
-const manifestNormalizationSnapshot = vi.hoisted(() => ({
+const manifestNormalizationSnapshot = {
   configFingerprint: "model-selection-test-normalizers",
-  plugins: [
-    {
-      id: "model-selection-test-normalizers",
-      modelIdNormalization: {
-        providers: {
-          anthropic: {
-            aliases: {
-              "opus-4.6": "claude-opus-4-6",
-              "opus-4.5": "claude-opus-4-5",
-              "sonnet-4.6": "claude-sonnet-4-6",
-              "sonnet-4.5": "claude-sonnet-4-5",
-            },
-          },
-          google: {
-            aliases: {
-              "gemini-3-pro": "gemini-3.1-pro-preview",
-              "gemini-3-flash": "gemini-3-flash-preview",
-              "gemini-3.1-pro": "gemini-3.1-pro-preview",
-              "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
-              "gemini-3.1-flash": "gemini-3-flash-preview",
-              "gemini-3.1-flash-preview": "gemini-3-flash-preview",
-            },
-          },
-          "google-vertex": {
-            aliases: {
-              "gemini-3-pro": "gemini-3.1-pro-preview",
-              "gemini-3-flash": "gemini-3-flash-preview",
-              "gemini-3.1-pro": "gemini-3.1-pro-preview",
-              "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
-              "gemini-3.1-flash": "gemini-3-flash-preview",
-              "gemini-3.1-flash-preview": "gemini-3-flash-preview",
-            },
-          },
-          xai: { aliases: {} },
-          openrouter: {
-            prefixWhenBare: "openrouter",
-          },
-          huggingface: {
-            stripPrefixes: ["huggingface/"],
-          },
-          "vercel-ai-gateway": {
-            aliases: {
-              "opus-4.6": "claude-opus-4-6",
-              "opus-4.5": "claude-opus-4-5",
-              "sonnet-4.6": "claude-sonnet-4-6",
-              "sonnet-4.5": "claude-sonnet-4-5",
-            },
-            prefixWhenBareAfterAliasStartsWith: [
-              {
-                modelPrefix: "claude-",
-                prefix: "anthropic",
+  ...createPluginMetadataSnapshotFixture({
+    plugins: [
+      {
+        id: "model-selection-test-normalizers",
+        modelIdNormalization: {
+          providers: {
+            anthropic: {
+              aliases: {
+                "opus-4.6": "claude-opus-4-6",
+                "opus-4.5": "claude-opus-4-5",
+                "sonnet-4.6": "claude-sonnet-4-6",
+                "sonnet-4.5": "claude-sonnet-4-5",
               },
-            ],
-          },
-          nvidia: {
-            prefixWhenBare: "nvidia",
+            },
+            google: {
+              aliases: {
+                "gemini-3-pro": "gemini-3.1-pro-preview",
+                "gemini-3-flash": "gemini-3-flash-preview",
+                "gemini-3.1-pro": "gemini-3.1-pro-preview",
+                "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+                "gemini-3.1-flash": "gemini-3-flash-preview",
+                "gemini-3.1-flash-preview": "gemini-3-flash-preview",
+              },
+            },
+            "google-vertex": {
+              aliases: {
+                "gemini-3-pro": "gemini-3.1-pro-preview",
+                "gemini-3-flash": "gemini-3-flash-preview",
+                "gemini-3.1-pro": "gemini-3.1-pro-preview",
+                "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+                "gemini-3.1-flash": "gemini-3-flash-preview",
+                "gemini-3.1-flash-preview": "gemini-3-flash-preview",
+              },
+            },
+            xai: { aliases: {} },
+            openrouter: {
+              prefixWhenBare: "openrouter",
+            },
+            huggingface: {
+              stripPrefixes: ["huggingface/"],
+            },
+            "vercel-ai-gateway": {
+              aliases: {
+                "opus-4.6": "claude-opus-4-6",
+                "opus-4.5": "claude-opus-4-5",
+                "sonnet-4.6": "claude-sonnet-4-6",
+                "sonnet-4.5": "claude-sonnet-4-5",
+              },
+              prefixWhenBareAfterAliasStartsWith: [
+                {
+                  modelPrefix: "claude-",
+                  prefix: "anthropic",
+                },
+              ],
+            },
+            nvidia: {
+              prefixWhenBare: "nvidia",
+            },
           },
         },
       },
-    },
-  ],
-}));
+    ],
+  }),
+};
 
 const providerModelNormalizationMock = vi.hoisted(() => ({
   normalizeProviderModelIdWithRuntime: vi.fn(() => undefined),
@@ -122,7 +125,8 @@ const providerPolicySurfaceMock = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("../plugins/current-plugin-metadata-snapshot.js", () => ({
+vi.mock("../plugins/current-plugin-metadata-snapshot.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plugins/current-plugin-metadata-snapshot.js")>()),
   getCurrentPluginMetadataSnapshot: () => manifestNormalizationSnapshot,
 }));
 
@@ -827,6 +831,7 @@ describe("model-selection", () => {
                   id: "Qwen/Qwen3-8B",
                   name: "Qwen 3 8B",
                   reasoning: true,
+                  thinkingLevelMap: { off: null, max: "max" },
                   compat: {
                     thinkingFormat: "qwen-chat-template",
                   },
@@ -843,6 +848,7 @@ describe("model-selection", () => {
       expect(model?.compat).toEqual({ thinkingFormat: "qwen-chat-template" });
       expect(model?.reasoning).toBe(true);
       expect(model?.configuredReasoning).toBe(true);
+      expect(model?.thinkingLevelMap).toEqual({ off: null, max: "max" });
     });
 
     it("carries configured model params into catalog entries for provider policy", () => {
@@ -1050,6 +1056,56 @@ describe("model-selection", () => {
   });
 
   describe("buildAllowedModelSet", () => {
+    it("retains every configured row in a large allowlist without admitting other rows", () => {
+      const catalog = Array.from({ length: 400 }, (_, index) => ({
+        provider: "custom",
+        id: `synthetic-${index}`,
+        name: `Synthetic ${index}`,
+      }));
+      const result = buildAllowedModelSet({
+        cfg: {
+          agents: {
+            defaults: {
+              modelPolicy: { allow: catalog.map((entry) => `custom/${entry.id}`) },
+            },
+          },
+        },
+        catalog: [...catalog, { provider: "other", id: "synthetic-0", name: "Other provider" }],
+        defaultProvider: "custom",
+      });
+
+      expect(result.allowAny).toBe(false);
+      expect(result.allowedCatalog).toEqual(catalog);
+      expect(result.allowedKeys.size).toBe(400);
+    });
+
+    it("keeps case-insensitive visibility inside the exact provider namespace", () => {
+      const result = buildAllowedModelSet({
+        cfg: {
+          agents: {
+            defaults: {
+              modelPolicy: { allow: ["custom/team/Reader", "custom/READER"] },
+            },
+          },
+        },
+        catalog: [
+          { provider: "custom", id: "team/Reader", name: "Nested model" },
+          { provider: "custom/team", id: "Reader", name: "Namespaced provider" },
+          { provider: "custom", id: "Reader", name: "Uppercase" },
+          { provider: "custom", id: "reader", name: "Lowercase" },
+          { provider: "other", id: "READER", name: "Other provider" },
+        ],
+        defaultProvider: "custom",
+      });
+
+      expect(result.allowedCatalog.map(({ provider, id }) => [provider, id])).toEqual([
+        ["custom", "team/Reader"],
+        ["custom", "Reader"],
+        ["custom", "reader"],
+        ["custom", "READER"],
+      ]);
+    });
+
     it("keeps explicitly allowlisted models even when missing from bundled catalog", () => {
       const result = buildAllowedModelSet({
         cfg: EXPLICIT_ALLOWLIST_CONFIG,
@@ -1507,9 +1563,6 @@ describe("model-selection", () => {
       expect(result.allowedKeys.has("openai/gpt-4o")).toBe(true);
       expect(result.allowedKeys.has("anthropic/claude-sonnet-4-6")).toBe(false);
       expect(result.allowedKeys.has("google/gemini-3.1-pro-preview")).toBe(false);
-      expect(result.automaticFallbackKeys).toEqual(
-        new Set(["anthropic/claude-sonnet-4-6", "google/gemini-3.1-pro-preview"]),
-      );
       expect(result.allowAny).toBe(false);
     });
 
@@ -1527,7 +1580,7 @@ describe("model-selection", () => {
       expect(result.allowAny).toBe(false);
     });
 
-    it("prefers per-agent fallback overrides when agentId is provided", () => {
+    it("keeps per-agent fallback overrides out of explicit selection", () => {
       const cfg = createAgentFallbackConfig({
         fallbacks: ["google/gemini-3-pro"],
         agentFallbacks: ["anthropic/claude-sonnet-4-6"],
@@ -1544,7 +1597,6 @@ describe("model-selection", () => {
       expect(result.allowedKeys.has("openai/gpt-4o")).toBe(true);
       expect(result.allowedKeys.has("anthropic/claude-sonnet-4-6")).toBe(false);
       expect(result.allowedKeys.has("google/gemini-3.1-pro-preview")).toBe(false);
-      expect(result.automaticFallbackKeys).toEqual(new Set(["anthropic/claude-sonnet-4-6"]));
       expect(result.allowAny).toBe(false);
     });
   });
@@ -2866,6 +2918,17 @@ describe("resolveSubagentSpawnModelSelection", () => {
       agentId: "main",
       modelOverride: undefined,
       expected: "openai/gpt-5.4",
+    },
+    {
+      name: "resolves profile-qualified aliases without treating the profile as model identity",
+      config: {
+        modelEntries: {
+          "openai/gpt-5.6-luna": { alias: "luna" },
+        },
+      },
+      agentId: "main",
+      modelOverride: "luna@openai:test-profile",
+      expected: "openai/gpt-5.6-luna@openai:test-profile",
     },
     {
       name: "resolves an alias configured only on the target agent",

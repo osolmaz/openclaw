@@ -83,6 +83,11 @@ const SessionPlacementDiskSpaceProperties = {
   diskSpace: Type.Optional(SessionPlacementDiskSpaceSchema),
 };
 
+const SessionPlacementIdentityProperties = {
+  providerId: Type.Optional(NonEmptyString),
+  profileId: Type.Optional(NonEmptyString),
+};
+
 const WorkspaceResultConflictSchema = closedObject({
   paths: Type.Array(NonEmptyString, { minItems: 1, maxItems: 256 }),
   stagedResultRef: NonEmptyString,
@@ -93,7 +98,12 @@ const SessionPlacementConflictProperties = {
   workspaceResultConflict: Type.Optional(WorkspaceResultConflictSchema),
 };
 
+const SessionPlacementWorkspaceReconciliationProperties = {
+  workspaceResultReconciling: Type.Optional(Type.Literal(true)),
+};
+
 const TerminalSessionPlacementProperties = {
+  ...SessionPlacementIdentityProperties,
   environmentId: Type.Optional(NonEmptyString),
   activeOwnerEpoch: Type.Optional(SessionPlacementOwnerEpochSchema),
   workspaceBaseManifestRef: Type.Optional(NonEmptyString),
@@ -117,6 +127,7 @@ function workerOwnedSessionPlacementProperties<
   return {
     state: Type.Literal(state),
     ...SessionPlacementTimingProperties,
+    ...SessionPlacementIdentityProperties,
     environmentId: NonEmptyString,
     activeOwnerEpoch: SessionPlacementOwnerEpochSchema,
     workerBundleHash: WorkerBundleHashSchema,
@@ -133,12 +144,14 @@ const RequestedSessionPlacementSchema = createUnownedSessionPlacementSchema("req
 const ProvisioningSessionPlacementSchema = closedObject({
   state: Type.Literal("provisioning"),
   ...SessionPlacementTimingProperties,
+  ...SessionPlacementIdentityProperties,
   environmentId: Type.Optional(NonEmptyString),
 });
 
 const SyncingSessionPlacementSchema = closedObject({
   state: Type.Literal("syncing"),
   ...SessionPlacementTimingProperties,
+  ...SessionPlacementIdentityProperties,
   environmentId: NonEmptyString,
   workerBundleHash: WorkerBundleHashSchema,
 });
@@ -146,6 +159,7 @@ const SyncingSessionPlacementSchema = closedObject({
 const StartingSessionPlacementSchema = closedObject({
   state: Type.Literal("starting"),
   ...SessionPlacementTimingProperties,
+  ...SessionPlacementIdentityProperties,
   environmentId: NonEmptyString,
   workerBundleHash: WorkerBundleHashSchema,
   ...SessionPlacementWorkspaceProperties,
@@ -153,14 +167,16 @@ const StartingSessionPlacementSchema = closedObject({
 
 const ActiveWorkerSessionPlacementSchema = closedObject({
   ...workerOwnedSessionPlacementProperties("active"),
+  ...SessionPlacementWorkspaceReconciliationProperties,
   runner: Type.Optional(SessionPlacementRunnerSchema),
 });
-const DrainingSessionPlacementSchema = closedObject(
-  workerOwnedSessionPlacementProperties("draining"),
-);
-const ReconcilingSessionPlacementSchema = closedObject(
-  workerOwnedSessionPlacementProperties("reconciling"),
-);
+const DrainingSessionPlacementSchema = closedObject({
+  ...workerOwnedSessionPlacementProperties("draining"),
+  ...SessionPlacementWorkspaceReconciliationProperties,
+});
+const ReconcilingSessionPlacementSchema = closedObject({
+  ...workerOwnedSessionPlacementProperties("reconciling"),
+});
 
 const ReclaimedSessionPlacementSchema = closedObject({
   state: Type.Literal("reclaimed"),
@@ -173,6 +189,7 @@ const FailedSessionPlacementSchema = closedObject({
   ...SessionPlacementTimingProperties,
   ...TerminalSessionPlacementProperties,
   recoveryError: NonEmptyString,
+  recoveryAction: Type.Optional(Type.Enum(["restart", "stop-first"] as const, { type: "string" })),
 });
 
 /** Gateway-visible placement projection; `state` remains the closed discriminator. */
@@ -194,6 +211,7 @@ const WorkerMachineClassSchema = Type.String({
   minLength: 1,
   maxLength: WORKER_MACHINE_CLASS_MAX_LENGTH,
 });
+const WorkerOperatingSystemIdSchema = Type.String({ minLength: 1, maxLength: 64 });
 
 /**
  * Requests one-way dispatch to an explicit or automatically selected device (`operator.write`),
@@ -210,6 +228,7 @@ export const SessionsDispatchParamsSchema = Type.Object(
     deviceId: Type.Optional(NonEmptyString),
     autoDevice: Type.Optional(Type.Literal(true)),
     machineClass: Type.Optional(WorkerMachineClassSchema),
+    os: Type.Optional(WorkerOperatingSystemIdSchema),
   },
   {
     additionalProperties: false,
@@ -225,6 +244,7 @@ export const SessionsDispatchParamsSchema = Type.Object(
             { required: ["profileId"] },
             { required: ["autoDevice"] },
             { required: ["machineClass"] },
+            { required: ["os"] },
           ],
         },
       },
@@ -235,6 +255,7 @@ export const SessionsDispatchParamsSchema = Type.Object(
             { required: ["profileId"] },
             { required: ["deviceId"] },
             { required: ["machineClass"] },
+            { required: ["os"] },
           ],
         },
       },
@@ -245,6 +266,7 @@ export const SessionsDispatchParamsSchema = Type.Object(
             { required: ["deviceId"] },
             { required: ["autoDevice"] },
             { required: ["machineClass"] },
+            { required: ["os"] },
           ],
         },
       },
@@ -303,6 +325,7 @@ export const SessionMoveProfileTargetSchema = closedObject({
   kind: Type.Literal("profile"),
   profileId: WorkerIdentifierSchema,
   machineClass: Type.Optional(WorkerMachineClassSchema),
+  os: Type.Optional(WorkerOperatingSystemIdSchema),
 });
 
 /** Moves the session to one paired device worker. */

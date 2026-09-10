@@ -1,16 +1,35 @@
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import {
   clearNodeSqliteKyselyCacheForDatabase,
   registerNodeSqliteKyselyQueryErrorHandler,
-} from "../infra/kysely-sync.js";
+} from "../infra/kysely-sync-cache-state.js";
+import { createSqliteLifecycleAggregateError } from "../infra/sqlite-coordinator.js";
 import type { SqliteFileGeneration } from "../infra/sqlite-file-generation.js";
 import { createSqliteTerminalOpenLatch } from "../infra/sqlite-terminal-open-latch.js";
 import { isSqliteCorruptionError } from "../infra/sqlite-transaction.js";
-import { readOpenClawDatabaseQuarantine } from "./openclaw-quarantine-store.js";
+import { isSqliteSchemaVersionError } from "../infra/sqlite-user-version.js";
+import { registerSqliteCacheExitClose } from "../infra/sqlite-wal.js";
+import {
+  createOpenClawDatabaseVerificationError,
+  readOpenClawDatabaseQuarantine,
+} from "./openclaw-quarantine-store.js";
 import type { OpenClawStateDatabase } from "./openclaw-state-db-contract.js";
-import { createOpenClawDatabaseVerificationError } from "./openclaw-state-db-maintenance.js";
+import { assertSupportedStateSchemaVersion } from "./openclaw-state-db-schema-version.js";
 
 const cachedDatabases = new Map<string, OpenClawStateDatabase>();
+type StateDatabaseHandle = Pick<OpenClawStateDatabase, "db" | "path"> &
+  Partial<Pick<OpenClawStateDatabase, "walMaintenance">>;
+// Failed native closes stay disposal-owned, never eligible for a successful cache hit.
+const retainedDatabaseHandles = new Map<DatabaseSync, StateDatabaseHandle>();
+let unregisterRetainedExitClose: (() => void) | undefined;
+// Statements retain their native database; key by the plain lifecycle owner so
+// removing that owner releases the statement instead of rooting its own weak key.
+const cachedDataVersionStatements = new WeakMap<
+  OpenClawStateDatabase,
+  ReturnType<DatabaseSync["prepare"]>
+>();
+const cachedDataVersions = new WeakMap<DatabaseSync, number>();
 type OpenClawStateDatabaseLifecycleEvent =
   | { kind: "opened"; database: OpenClawStateDatabase }
   | { kind: "closed"; path: string }
@@ -21,6 +40,21 @@ function notifyOpenClawStateDatabaseLifecycle(event: OpenClawStateDatabaseLifecy
   for (const listener of databaseLifecycleListeners) {
     listener(event);
   }
+}
+
+function readSqliteDataVersion(database: OpenClawStateDatabase): number {
+  let statement = cachedDataVersionStatements.get(database);
+  if (!statement) {
+    statement = database.db /* sqlite-allow-raw -- Connection-local schema compatibility counter. */
+      .prepare("PRAGMA data_version");
+    cachedDataVersionStatements.set(database, statement);
+  }
+  // SAFETY: SQLite defines this pragma's single-column row; the value is validated below.
+  const row = statement.get() as { data_version?: unknown } | undefined;
+  if (typeof row?.data_version !== "number") {
+    throw new Error("SQLite did not return a numeric PRAGMA data_version");
+  }
+  return row.data_version;
 }
 
 export function registerOpenClawStateDatabaseLifecycleListener(
@@ -35,34 +69,55 @@ export function registerOpenClawStateDatabaseLifecycleListener(
   return () => databaseLifecycleListeners.delete(listener);
 }
 
-type OpenClawStateDatabaseCloseResult = {
-  caught: boolean;
-  errors: unknown[];
-};
-
 /** Close both physical-handle owners while retaining every cleanup failure. */
 function closeOpenClawStateDatabaseHandle(
-  database: OpenClawStateDatabase,
+  database: StateDatabaseHandle,
   options?: Parameters<OpenClawStateDatabase["walMaintenance"]["close"]>[0],
-): OpenClawStateDatabaseCloseResult {
-  let caught = false;
+): unknown[] {
   const errors: unknown[] = [];
   try {
-    database.walMaintenance.close(options);
+    database.walMaintenance?.close(options);
   } catch (error) {
-    caught = true;
     errors.push(error);
   }
-  clearNodeSqliteKyselyCacheForDatabase(database.db);
+  try {
+    clearNodeSqliteKyselyCacheForDatabase(database.db);
+  } catch (error) {
+    errors.push(error);
+  }
   try {
     if (database.db.isOpen) {
       database.db.close();
     }
   } catch (error) {
-    caught = true;
     errors.push(error);
   }
-  return { caught, errors };
+  if (database.db.isOpen) {
+    retainedDatabaseHandles.set(database.db, database);
+    unregisterRetainedExitClose ??= registerSqliteCacheExitClose(closeOpenClawStateDatabase);
+  } else {
+    retainedDatabaseHandles.delete(database.db);
+    if (retainedDatabaseHandles.size === 0) {
+      unregisterRetainedExitClose?.();
+      unregisterRetainedExitClose = undefined;
+    }
+  }
+  return errors;
+}
+
+function closeRetainedStateDatabaseHandles(
+  pathname?: string,
+  options?: Parameters<OpenClawStateDatabase["walMaintenance"]["close"]>[0],
+): { closed: boolean; errors: unknown[] } {
+  let closed = false;
+  const errors: unknown[] = [];
+  for (const database of retainedDatabaseHandles.values()) {
+    if (pathname === undefined || database.path === pathname) {
+      errors.push(...closeOpenClawStateDatabaseHandle(database, options));
+      closed = true;
+    }
+  }
+  return { closed, errors };
 }
 
 function evictCachedOpenClawStateDatabase(database: OpenClawStateDatabase): boolean {
@@ -99,6 +154,7 @@ const terminalOpenLatch = createSqliteTerminalOpenLatch({
 /** Publish a fully opened handle and bind query corruption to its exact cache owner. */
 function publishOpenClawStateDatabase(database: OpenClawStateDatabase): OpenClawStateDatabase {
   const { db, path: pathname } = database;
+  cachedDataVersions.set(db, readSqliteDataVersion(database));
   cachedDatabases.set(pathname, database);
   notifyOpenClawStateDatabaseLifecycle({ kind: "opened", database });
   registerNodeSqliteKyselyQueryErrorHandler(db, (error) => {
@@ -111,7 +167,50 @@ function publishOpenClawStateDatabase(database: OpenClawStateDatabase): OpenClaw
   return database;
 }
 
+/** Revalidate a cached owner after another connection commits to its database. */
+function getOpenClawStateDatabaseRuntimeFailure(pathname: string): Error | undefined {
+  const resolvedPath = path.resolve(pathname);
+  const latched = terminalOpenLatch.get(resolvedPath);
+  if (latched) {
+    return latched;
+  }
+  const cached = cachedDatabases.get(resolvedPath);
+  if (!cached?.db.isOpen) {
+    return undefined;
+  }
+  try {
+    const dataVersion = readSqliteDataVersion(cached);
+    if (cachedDataVersions.get(cached.db) === dataVersion) {
+      return undefined;
+    }
+    // data_version is the cheap external-commit trigger. Recheck published and
+    // content versions only when another connection changed the file.
+    assertSupportedStateSchemaVersion(cached.db, resolvedPath);
+    cachedDataVersions.set(cached.db, dataVersion);
+    return undefined;
+  } catch (error) {
+    const failure = error instanceof Error ? error : new Error(String(error));
+    if (isSqliteCorruptionError(failure)) {
+      evictCachedOpenClawStateDatabase(cached);
+      return undefined;
+    }
+    if (isSqliteSchemaVersionError(failure)) {
+      terminalOpenLatch.record(resolvedPath, failure);
+      notifyOpenClawStateDatabaseLifecycle({
+        kind: "open-error",
+        path: resolvedPath,
+        error: failure,
+      });
+    }
+    return failure;
+  }
+}
+
 function getCachedOpenClawStateDatabase(pathname: string): OpenClawStateDatabase | undefined {
+  const runtimeFailure = getOpenClawStateDatabaseRuntimeFailure(pathname);
+  if (runtimeFailure) {
+    throw runtimeFailure;
+  }
   return cachedDatabases.get(path.resolve(pathname));
 }
 
@@ -132,7 +231,7 @@ function closeStaleCachedOpenClawStateDatabase(database: OpenClawStateDatabase):
 }
 
 /** Latch background verification damage so later opens fail without rescanning. */
-function recordOpenClawStateDatabaseOpenFailure(
+export function recordOpenClawStateDatabaseOpenFailure(
   pathname: string,
   error: Error,
   generation?: SqliteFileGeneration,
@@ -141,7 +240,7 @@ function recordOpenClawStateDatabaseOpenFailure(
 }
 
 /** Clear a terminal open failure after doctor rewrites the database file. */
-function clearOpenClawStateDatabaseOpenFailure(pathname: string): void {
+export function clearOpenClawStateDatabaseOpenFailure(pathname: string): void {
   terminalOpenLatch.clear(pathname);
 }
 
@@ -183,42 +282,60 @@ function assertOpenClawStateDatabaseFreshOpenAllowedAtPath(
 }
 
 /** Close one cached shared state database handle by exact pathname. */
-function closeOpenClawStateDatabaseByPath(pathname: string): boolean {
+export function closeOpenClawStateDatabaseByPath(pathname: string): boolean {
   const resolvedPath = path.resolve(pathname);
+  const retained = closeRetainedStateDatabaseHandles(resolvedPath);
   const database = cachedDatabases.get(resolvedPath);
-  if (!database) {
-    return false;
+  if (database) {
+    cachedDatabases.delete(resolvedPath);
+    retained.errors.push(...closeOpenClawStateDatabaseHandle(database));
+    notifyOpenClawStateDatabaseLifecycle({ kind: "closed", path: resolvedPath });
   }
-  database.walMaintenance.close();
-  if (database.db.isOpen) {
-    database.db.close();
+  if (retained.errors.length === 1) {
+    throw retained.errors[0];
   }
-  cachedDatabases.delete(resolvedPath);
-  notifyOpenClawStateDatabaseLifecycle({ kind: "closed", path: resolvedPath });
-  return true;
+  if (retained.errors.length > 1) {
+    throw createSqliteLifecycleAggregateError(
+      retained.errors,
+      `OpenClaw state database cleanup failed for ${resolvedPath}.`,
+      retained.errors[0],
+    );
+  }
+  return Boolean(database) || retained.closed;
 }
 
 /** Close all cached shared state database handles. */
-function closeOpenClawStateDatabase(
+export function closeOpenClawStateDatabase(
   options?: Parameters<OpenClawStateDatabase["walMaintenance"]["close"]>[0],
 ): void {
+  const { errors } = closeRetainedStateDatabaseHandles(undefined, options);
   for (const database of cachedDatabases.values()) {
-    database.walMaintenance.close(options);
-    if (database.db.isOpen) {
-      database.db.close();
-    }
+    cachedDatabases.delete(database.path);
+    errors.push(...closeOpenClawStateDatabaseHandle(database, options));
     notifyOpenClawStateDatabaseLifecycle({ kind: "closed", path: database.path });
   }
-  cachedDatabases.clear();
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+  if (errors.length > 1) {
+    throw createSqliteLifecycleAggregateError(
+      errors,
+      "OpenClaw state database cleanup failed.",
+      errors[0],
+    );
+  }
 }
 
-/** Test whether any cached shared state database handle is still open. */
-function isOpenClawStateDatabaseOpen(): boolean {
+/** Test whether a cached shared state database handle is still open, optionally at one path. */
+export function isOpenClawStateDatabaseOpen(pathname?: string): boolean {
+  if (pathname !== undefined) {
+    return cachedDatabases.get(path.resolve(pathname))?.db.isOpen === true;
+  }
   return Array.from(cachedDatabases.values()).some((database) => database.db.isOpen);
 }
 
 /** Close shared state handles and clear terminal failure latches for test isolation. */
-function closeOpenClawStateDatabaseForTest(): void {
+export function closeOpenClawStateDatabaseForTest(): void {
   closeOpenClawStateDatabase();
   terminalOpenLatch.clearAll();
 }
@@ -236,6 +353,7 @@ export const openClawStateDatabaseCache = {
   evictCachedOpenClawStateDatabase,
   evictOpenClawStateDatabaseAfterCorruption,
   getCachedOpenClawStateDatabase,
+  getOpenClawStateDatabaseRuntimeFailure,
   getOpenClawStateDatabaseIfOpenAtPath,
   isOpenClawStateDatabaseOpen,
   publishOpenClawStateDatabase,

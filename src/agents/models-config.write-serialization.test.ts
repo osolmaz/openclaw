@@ -59,41 +59,36 @@ installModelsConfigTestHooks();
 let ensureOpenClawModelsJson: typeof import("./models-config.js").ensureOpenClawModelsJson;
 let planOpenClawModelsJsonSource: typeof import("./models-config.js").planOpenClawModelsJsonSource;
 let clearPluginMetadataLifecycleCaches: typeof import("../plugins/plugin-metadata-lifecycle.js").clearPluginMetadataLifecycleCaches;
-let setCurrentPluginMetadataSnapshot: typeof import("../plugins/current-plugin-metadata-snapshot.js").setCurrentPluginMetadataSnapshot;
+let makeEmptyPluginMetadataOwners: typeof import("../plugins/current-plugin-metadata.test-support.js").makeEmptyPluginMetadataOwners;
+let setCurrentPluginMetadataSnapshot: typeof import("../plugins/current-plugin-metadata.test-support.js").setCurrentPluginMetadataSnapshot;
 
 function createPluginMetadataSnapshot(workspaceDir: string): PluginMetadataSnapshot {
   // Minimal process snapshot used to prove when metadata may be reused.
   const policyHash = resolveInstalledPluginIndexPolicyHash({});
+  const index: PluginMetadataSnapshot["index"] = {
+    version: 1,
+    hostContractVersion: "test",
+    compatRegistryVersion: "test",
+    migrationVersion: 1,
+    policyHash,
+    generatedAtMs: 1,
+    installRecords: {},
+    plugins: [],
+    diagnostics: [],
+  };
   return {
     policyHash,
     workspaceDir,
-    index: {
-      version: 1,
-      hostContractVersion: "test",
-      compatRegistryVersion: "test",
-      migrationVersion: 1,
-      policyHash,
-      generatedAtMs: 1,
-      installRecords: {},
-      plugins: [],
-      diagnostics: [],
-    },
+    index,
+    registryIndex: index,
     registryDiagnostics: [],
     manifestRegistry: { plugins: [], diagnostics: [] },
     plugins: [],
     diagnostics: [],
     byPluginId: new Map(),
     normalizePluginId: (pluginId) => pluginId,
-    owners: {
-      channels: new Map(),
-      channelConfigs: new Map(),
-      providers: new Map(),
-      modelCatalogProviders: new Map(),
-      cliBackends: new Map(),
-      setupProviders: new Map(),
-      commandAliases: new Map(),
-      contracts: new Map(),
-    },
+    declaredProviderOwners: new Map(),
+    owners: makeEmptyPluginMetadataOwners(),
     metrics: {
       registrySnapshotMs: 0,
       manifestRegistryMs: 0,
@@ -167,8 +162,8 @@ beforeAll(async () => {
   ({ ensureOpenClawModelsJson, planOpenClawModelsJsonSource } = await import("./models-config.js"));
   ({ clearPluginMetadataLifecycleCaches } =
     await import("../plugins/plugin-metadata-lifecycle.js"));
-  ({ setCurrentPluginMetadataSnapshot } =
-    await import("../plugins/current-plugin-metadata-snapshot.js"));
+  ({ makeEmptyPluginMetadataOwners, setCurrentPluginMetadataSnapshot } =
+    await import("../plugins/current-plugin-metadata.test-support.js"));
 });
 
 beforeEach(() => {

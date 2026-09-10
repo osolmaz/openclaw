@@ -8,19 +8,27 @@ read_when:
   - You need controlled, temporary diff artifacts with secure defaults
 ---
 
-`diffs` is an optional bundled plugin tool that turns before/after text or a unified patch into a read-only diff artifact. It also prepends short agent guidance into the system prompt and ships a companion skill for fuller instructions.
+`diffs` is an optional plugin tool that turns before/after text or a unified patch into a read-only diff artifact. It also prepends short agent guidance into the system prompt and ships a companion skill for fuller instructions.
 
 Input: `before` + `after` text, or a unified `patch` (mutually exclusive).
 
 Output: a gateway viewer URL for browser presentation, a rendered PNG/PDF file path for message delivery, or both.
+
+The [Control UI](/web/control-ui) already highlights inline tool diffs and session diffs without this plugin. Install `diffs` when agents need standalone viewer links or rendered attachments for other channels.
 
 ## Quick start
 
 <Steps>
   <Step title="Install the plugin">
     ```bash
-    openclaw plugins install diffs
+    openclaw plugins install clawhub:@openclaw/diffs
     ```
+
+    `diffs` and its language pack ship as separate packages rather than with
+    OpenClaw, so the install needs a scoped locator. The `clawhub:` prefix
+    selects the ClawHub copy of `@openclaw/diffs`; use
+    `npm:@openclaw/diffs` to install from npm instead.
+
   </Step>
   <Step title="Enable the plugin">
     ```json5
@@ -400,3 +408,4 @@ Diff rendering engine powered by [Diffs](https://diffs.com).
 - [Browser](/tools/browser)
 - [Plugins](/tools/plugin)
 - [Tools overview](/tools)
+- [`apply_patch`](/tools/apply-patch) — the tool that produces these edits

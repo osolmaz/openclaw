@@ -3,7 +3,6 @@ import type { Context, Model } from "../../llm/types.js";
 import {
   INTERNAL_RUNTIME_CONTEXT_BEGIN,
   INTERNAL_RUNTIME_CONTEXT_END,
-  OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
   OPENCLAW_RUNTIME_CONTEXT_NOTICE,
 } from "../internal-runtime-context.js";
 import { buildOpenAICompletionsParams } from "../openai-transport-stream.js";
@@ -105,13 +104,10 @@ function findCarrier(messages: Array<Record<string, unknown>>) {
 }
 
 describe("context serialization at the provider request boundary", () => {
-  it("keeps the default runtime carrier byte-compatible", () => {
+  it("keeps the default carrier aligned with the current runtime format", () => {
     const carrier = findCarrier(buildProviderMessages("default"));
     expect(carrier?.["content"]).toBe(
       [
-        OPENCLAW_NEXT_TURN_RUNTIME_CONTEXT_HEADER,
-        OPENCLAW_RUNTIME_CONTEXT_NOTICE,
-        "",
         INTERNAL_RUNTIME_CONTEXT_BEGIN,
         "Conversation info: ⟦openclaw:ctx⟧",
         "```json",

@@ -1,6 +1,7 @@
 {
   "id": "deepgram",
-  "icon": "https://cdn.simpleicons.org/deepgram",
+  "categories": ["models", "voice", "media"],
+  "capabilityCatalogEntry": "./capability-catalog.ts",
   "activation": {
     "onStartup": false
   },

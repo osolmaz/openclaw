@@ -30,6 +30,8 @@ export type EmbeddedAgentExecutionContract = "default" | "strict-agentic";
 export type SubagentDelegationMode = "suggest" | "prefer";
 /** Image compression/detail preference used before sending image inputs to models. */
 export type AgentImageQualityPreference = "auto" | "efficient" | "balanced" | "high";
+/** Scope of an interactive model selection when no explicit scope is supplied. */
+export type ModelSelectionScope = "session" | "agent" | "global";
 /** Canonical thinking levels accepted by agent defaults and compaction overrides. */
 export type AgentThinkingLevel =
   | "off"
@@ -49,6 +51,8 @@ export type AgentModelEntryConfig = {
   params?: Record<string, unknown>;
   /** Optional agent execution runtime for this specific provider/model entry. */
   agentRuntime?: AgentRuntimePolicyConfig;
+  /** OpenClaw Code Mode override; omitted inherits the enclosing activation policy. */
+  codeMode?: boolean;
   /** Enable streaming for this model (default: true, false for Ollama to avoid SDK issue #1205). */
   streaming?: boolean;
 };
@@ -127,6 +131,8 @@ export type AgentDefaultsConfig = {
   params?: Record<string, unknown>;
   /** Primary model and fallbacks (provider/model). Accepts string or {primary,fallbacks}. */
   model?: AgentModelConfig;
+  /** Model-selection scope; defaults to the current session. */
+  modelSelectionScope?: ModelSelectionScope;
   /** Optional lower-cost model for short internal tasks such as generated session titles. */
   utilityModel?: string;
   /**
@@ -154,8 +160,10 @@ export type AgentDefaultsConfig = {
   models?: Record<string, AgentModelEntryConfig>;
   /** Explicit model override policy. Empty or omitted allow permits any model. */
   modelPolicy?: AgentModelPolicyConfig;
-  /** Agent working directory (preferred). Used as the default cwd for agent runs. */
+  /** Agent bootstrap and memory directory; also the working directory when cwd is unset. */
   workspace?: string;
+  /** Working directory for agent reply runs, separate from workspace bootstrap and memory files. */
+  cwd?: string;
   /** Optional default allowlist of skills for agents that do not set agents.entries.*.skills. */
   skills?: string[];
   /** Silent-reply policy by conversation type. */
@@ -338,7 +346,7 @@ export type AgentDefaultsConfig = {
     allowAgents?: string[];
     /** Max concurrent sub-agent runs (global lane: "subagent"). Default: 8. */
     maxConcurrent?: number;
-    /** Maximum depth allowed for sessions_spawn chains. Default behavior: 1 (no nested spawns). */
+    /** Maximum depth for sessions_spawn chains. Default behavior: 5. */
     maxSpawnDepth?: number;
     /** Maximum active children a single requester session may spawn. Default behavior: 5. */
     maxChildrenPerAgent?: number;
@@ -404,7 +412,7 @@ export type AgentCompactionConfig = {
    * When set, compaction uses this model instead of the agent's primary model.
    * Falls back to the primary model when unset. */
   model?: string;
-  /** Maximum time in seconds for a single compaction operation (default: 180). */
+  /** Safety window in seconds for each built-in compaction model request (default: 180). */
   timeoutSeconds?: number;
   /**
    * Id of a registered compaction provider plugin.

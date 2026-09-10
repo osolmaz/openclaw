@@ -15,16 +15,14 @@ import type { OpenClawConfig } from "../config/config.js";
 import { extractModelCompat } from "../plugins/provider-model-compat.js";
 import type { ProviderRuntimeModel } from "../plugins/provider-runtime-model.types.js";
 import { normalizeProviderTransportWithPlugin } from "../plugins/provider-runtime.js";
+import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir, resolveSessionAgentId } from "./agent-scope.js";
 import { createOpenClawCodingTools } from "./agent-tools.js";
 import { resolveEffectiveToolPolicy } from "./agent-tools.policy.js";
-import { resolveModel, resolveModelAsync } from "./embedded-agent-runner/model.js";
+import { resolveModelAsync } from "./embedded-agent-runner/model.js";
 import { resolveBundledStaticCatalogModel } from "./embedded-agent-runner/model.static-catalog.js";
 import { normalizeStaticProviderModelId } from "./model-ref-shared.js";
-import {
-  PreparedModelRuntimeOwnerNotPublishedError,
-  acquireReadOnlyPreparedModelRuntime,
-} from "./prepared-model-runtime.js";
+import { acquireReadOnlyPreparedModelRuntime } from "./prepared-model-runtime.js";
 import { normalizeToolPolicyName } from "./tool-policy.js";
 import { buildRuntimeCompatibleToolInventory } from "./tools-effective-inventory-build.js";
 import { buildEffectiveToolInventoryGroups } from "./tools-effective-inventory-groups.js";
@@ -156,29 +154,8 @@ function resolveConfiguredFallbackApi(
     : "openai-responses";
 }
 
-function resolveDynamicRuntimeModelContext(params: {
-  cfg: OpenClawConfig;
-  agentId?: string;
-  agentDir?: string;
-  workspaceDir?: string;
-  provider: string;
-  modelId: string;
-}): { modelApi?: string; runtimeModel?: ProviderRuntimeModel } {
-  const runtimeModel = resolveModel(params.provider, params.modelId, params.agentDir, params.cfg, {
-    agentId: params.agentId,
-    workspaceDir: params.workspaceDir,
-  }).model as ProviderRuntimeModel | undefined;
-  if (!runtimeModel) {
-    return {};
-  }
-  return {
-    modelApi: runtimeModel.api,
-    runtimeModel,
-  };
-}
-
-/** Resolves the runtime model metadata needed to filter model-compatible tools. */
-function resolveEffectiveToolInventoryRuntimeModelContext(params: {
+/** Resolves configured or bundled metadata without starting provider discovery. */
+function resolveStaticToolInventoryRuntimeModelContext(params: {
   cfg: OpenClawConfig;
   agentId?: string;
   agentDir?: string;
@@ -241,14 +218,7 @@ function resolveEffectiveToolInventoryRuntimeModelContext(params: {
     };
   }
   if (!bundledStaticModel) {
-    return resolveDynamicRuntimeModelContext({
-      cfg: params.cfg,
-      agentId,
-      agentDir: params.agentDir,
-      workspaceDir,
-      provider,
-      modelId,
-    });
+    return {};
   }
   const runtimeModel = applyProviderTransportNormalization({
     cfg: params.cfg,
@@ -266,22 +236,26 @@ function resolveEffectiveToolInventoryRuntimeModelContext(params: {
   };
 }
 
-/** Resolves dynamic model metadata after publishing a request-owned read snapshot when needed. */
-export async function resolveEffectiveToolInventoryRuntimeModelContextAsync(
-  params: Parameters<typeof resolveEffectiveToolInventoryRuntimeModelContext>[0],
-): Promise<ReturnType<typeof resolveEffectiveToolInventoryRuntimeModelContext>> {
-  try {
-    return resolveEffectiveToolInventoryRuntimeModelContext(params);
-  } catch (error) {
-    if (!(error instanceof PreparedModelRuntimeOwnerNotPublishedError)) {
-      throw error;
-    }
+type ToolInventoryRuntimeModelContext = ReturnType<
+  typeof resolveStaticToolInventoryRuntimeModelContext
+>;
+
+/** Keeps dynamic model hooks owned and scoped until inventory projection finishes. */
+export async function acquireEffectiveToolInventoryRuntimeModelContext(
+  params: Parameters<typeof resolveStaticToolInventoryRuntimeModelContext>[0],
+): Promise<{
+  run: <T>(project: (context: ToolInventoryRuntimeModelContext) => T) => T;
+  release: () => void;
+}> {
+  const staticContext = resolveStaticToolInventoryRuntimeModelContext(params);
+  if (staticContext.runtimeModel) {
+    return { run: (project) => project(staticContext), release: () => {} };
   }
 
   const provider = normalizeProviderId(params.modelProvider ?? "");
   const modelId = params.modelId?.trim() ?? "";
   if (!provider || !modelId) {
-    return {};
+    return { run: (project) => project({}), release: () => {} };
   }
   const agentId = params.agentId?.trim() || resolveSessionAgentId({ config: params.cfg });
   const agentDir = params.agentDir ?? resolveAgentDir(params.cfg, agentId);
@@ -291,7 +265,11 @@ export async function resolveEffectiveToolInventoryRuntimeModelContextAsync(
     agentDir,
     config: params.cfg,
     workspaceDir,
+    // The selected provider owner must join the generation before dynamic hooks resolve.
+    loadRuntimePlugins: true,
+    runtimePluginSelections: [{ provider, modelId, agentId }],
   });
+  let transferred = false;
   try {
     const stores = lease.snapshot.createStores();
     const resolved = await resolveModelAsync(provider, modelId, agentDir, params.cfg, {
@@ -302,9 +280,31 @@ export async function resolveEffectiveToolInventoryRuntimeModelContextAsync(
       preparedModelRuntime: lease.snapshot,
     });
     const runtimeModel = resolved.model as ProviderRuntimeModel | undefined;
-    return runtimeModel ? { modelApi: runtimeModel.api, runtimeModel } : {};
+    if (!runtimeModel) {
+      return { run: (project) => project({}), release: () => {} };
+    }
+    const context = { modelApi: runtimeModel.api, runtimeModel };
+    let released = false;
+    const acquired = {
+      run: <T>(project: (context: ToolInventoryRuntimeModelContext) => T): T => {
+        if (released) {
+          throw new Error("Tool inventory model context has been released");
+        }
+        return withPluginRuntimeGenerationScope(lease.snapshot, () => project(context));
+      },
+      release: () => {
+        if (!released) {
+          released = true;
+          lease.release();
+        }
+      },
+    };
+    transferred = true;
+    return acquired;
   } finally {
-    lease.release();
+    if (!transferred) {
+      lease.release();
+    }
   }
 }
 
@@ -352,7 +352,7 @@ export function resolveEffectiveToolInventory(
           modelApi: params.modelApi ?? params.runtimeModel?.api,
           runtimeModel: params.runtimeModel,
         }
-      : resolveEffectiveToolInventoryRuntimeModelContext({
+      : resolveStaticToolInventoryRuntimeModelContext({
           cfg: params.cfg,
           agentId,
           agentDir,

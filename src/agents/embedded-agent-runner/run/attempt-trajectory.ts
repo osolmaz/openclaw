@@ -26,7 +26,7 @@ export async function prepareEmbeddedAttemptTrajectory(input: {
     sessionKey: attempt.sessionKey,
     sessionTarget: attempt.sessionTarget,
   });
-  if (attempt.disableTrajectory) {
+  if (attempt.disableTrajectory || attempt.sessionPersistence === "detached") {
     return null;
   }
   const sessionTarget =

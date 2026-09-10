@@ -21,6 +21,17 @@ import {
 import { writeProbeMcpServer } from "./mcp-cli.test-support.js";
 import { runCliWithExitFinalization } from "./one-shot-exit.js";
 
+async function writeMcpDoctorServers(
+  home: string,
+  servers: Record<string, unknown>,
+): Promise<void> {
+  await fs.writeFile(
+    path.join(home, ".openclaw", "openclaw.json"),
+    `${JSON.stringify({ mcp: { servers } })}\n`,
+    "utf8",
+  );
+}
+
 describe("mcp cli", () => {
   beforeEach(() => {
     resetMcpCliTestState();
@@ -609,30 +620,31 @@ describe("mcp cli", () => {
   });
 
   it("reports ignored OAuth Authorization headers regardless of casing", async () => {
-    await withTempHome("openclaw-cli-mcp-home-", async () => {
+    await withTempHome("openclaw-cli-mcp-home-", async (home) => {
       const workspaceDir = await createWorkspace();
       vi.spyOn(process, "cwd").mockReturnValue(workspaceDir);
       readMcpOAuthCredentialsStatus.mockResolvedValue({ state: "authorized" });
 
-      for (const { name, header, oauth } of [
-        { name: "lowercase", header: "authorization", oauth: true },
-        { name: "titlecase", header: "Authorization", oauth: true },
-        { name: "uppercase", header: "AUTHORIZATION", oauth: true },
-        { name: "proxy", header: "Proxy-Authorization", oauth: true },
-        { name: "unrelated", header: "X-Tenant", oauth: true },
-        { name: "without-oauth", header: "AUTHORIZATION", oauth: false },
-      ]) {
-        await runMcpCommand([
-          "mcp",
-          "set",
-          name,
-          JSON.stringify({
-            url: "https://mcp.example.com/mcp",
-            headers: { [header]: "$MCP_HEADER" },
-            ...(oauth ? { auth: "oauth" } : {}),
-          }),
-        ]);
-      }
+      await writeMcpDoctorServers(
+        home,
+        Object.fromEntries(
+          [
+            { name: "lowercase", header: "authorization", oauth: true },
+            { name: "titlecase", header: "Authorization", oauth: true },
+            { name: "uppercase", header: "AUTHORIZATION", oauth: true },
+            { name: "proxy", header: "Proxy-Authorization", oauth: true },
+            { name: "unrelated", header: "X-Tenant", oauth: true },
+            { name: "without-oauth", header: "AUTHORIZATION", oauth: false },
+          ].map(({ name, header, oauth }) => [
+            name,
+            {
+              url: "https://mcp.example.com/mcp",
+              headers: { [header]: "$MCP_HEADER" },
+              ...(oauth ? { auth: "oauth" } : {}),
+            },
+          ]),
+        ),
+      );
       mockLog.mockClear();
 
       await runMcpCommand(["mcp", "doctor", "--json"]);
@@ -662,24 +674,31 @@ describe("mcp cli", () => {
   });
 
   it("bounds concurrent MCP doctor server checks", async () => {
-    await withTempHome("openclaw-cli-mcp-home-", async () => {
+    await withTempHome("openclaw-cli-mcp-home-", async (home) => {
       const workspaceDir = await createWorkspace();
       vi.spyOn(process, "cwd").mockReturnValue(workspaceDir);
-      for (let index = 0; index < 6; index += 1) {
-        await runMcpCommand([
-          "mcp",
-          "set",
-          `server-${index}`,
-          JSON.stringify({
-            url: `https://mcp-${index}.example.com`,
-            transport: "streamable-http",
-            auth: "oauth",
-          }),
-        ]);
-      }
+      await writeMcpDoctorServers(
+        home,
+        Object.fromEntries(
+          Array.from({ length: 6 }, (_, index) => [
+            `server-${index}`,
+            {
+              url: `https://mcp-${index}.example.com`,
+              transport: "streamable-http",
+              auth: "oauth",
+            },
+          ]),
+        ),
+      );
 
       const checksBlocked = createDeferred();
+      const firstBatchStarted = createDeferred();
+      let startedChecks = 0;
       readMcpOAuthCredentialsStatus.mockImplementation(async () => {
+        startedChecks += 1;
+        if (startedChecks === 4) {
+          firstBatchStarted.resolve();
+        }
         await checksBlocked.promise;
         return {
           state: "unauthenticated",
@@ -687,18 +706,18 @@ describe("mcp cli", () => {
       });
 
       const doctorPromise = runMcpCommand(["mcp", "doctor", "--json"]);
-      await vi.waitFor(() => {
-        expect(readMcpOAuthCredentialsStatus.mock.calls.length).toBeGreaterThanOrEqual(4);
-      });
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
-      const startedBeforeRelease = readMcpOAuthCredentialsStatus.mock.calls.length;
-      checksBlocked.resolve();
-      await doctorPromise;
+      try {
+        await Promise.race([firstBatchStarted.promise, doctorPromise]);
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve);
+        });
+        expect(startedChecks).toBe(4);
+      } finally {
+        checksBlocked.resolve();
+        await doctorPromise;
+      }
 
       expect(readMcpOAuthCredentialsStatus).toHaveBeenCalledTimes(6);
-      expect(startedBeforeRelease).toBe(4);
       expect(
         JSON.parse(lastLogLine()).servers.map((server: { name: string }) => server.name),
       ).toEqual(["server-0", "server-1", "server-2", "server-3", "server-4", "server-5"]);
@@ -1017,13 +1036,13 @@ describe("mcp cli", () => {
       mockLog.mockClear();
       await runMcpCommand(["mcp", "probe", "memory"]);
       expect(mockLog.mock.calls.map(([line]) => String(line)).join("\n")).toContain(
-        "tools have no safety annotations; calls will require interactive approval",
+        "tools have no safety annotations; calls require approval in prompting session postures",
       );
 
       mockLog.mockClear();
       await runMcpCommand(["mcp", "doctor", "memory", "--probe"]);
       expect(mockLog.mock.calls.map(([line]) => String(line)).join("\n")).toContain(
-        "tools have no safety annotations; calls will require interactive approval",
+        "tools have no safety annotations; calls require approval in prompting session postures",
       );
     });
   });

@@ -3,13 +3,13 @@ import { initialState, Task, TaskStatus } from "@lit/task";
 import { html, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { AgentsListResult, SkillStatusReport } from "../../api/types.ts";
-import { pathForPluginsHubTab } from "../../app-route-paths.ts";
 import {
   applicationContext,
   type ApplicationContext,
   type ApplicationGatewaySnapshot,
 } from "../../app/context.ts";
 import { renderSettingsWorkspace } from "../../components/settings-workspace.ts";
+import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
 import { searchClawHub, type ClawHubSearchResult } from "../../lib/skills/clawhub-search.ts";
@@ -37,6 +37,8 @@ import { OpenClawLightDomElement } from "../../lit/openclaw-element.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import { renderPluginsHubHeader } from "../plugins/plugins-hub-header.ts";
 import { PLUGINS_HUB_PANEL_ID, type PluginsHubTab } from "../plugins/plugins-hub.ts";
+import { SkillLibraryController } from "./library-controller.ts";
+import { renderSkillLibrary } from "./library-view.ts";
 import { renderSkills, type SkillDetailTab, type SkillsStatusFilter } from "./view.ts";
 
 export type SkillsRouteData = {
@@ -47,6 +49,7 @@ export type SkillsRouteData = {
   selectedAgentId: string | null;
   report: SkillStatusReport | null;
   error: string | null;
+  clawhubRef?: string;
 };
 
 class SkillsPage extends OpenClawLightDomElement {
@@ -75,9 +78,6 @@ class SkillsPage extends OpenClawLightDomElement {
   @state() clawhubInstallMessage: {
     kind: "success" | "error";
     text: string;
-    acknowledgeRef?: string;
-    acknowledgeVersion?: string;
-    acknowledgeLabel?: string;
   } | null = null;
   @state() clawhubVerdicts: Record<string, ClawHubSkillSecurityVerdict> = {};
   @state() clawhubVerdictsLoading = false;
@@ -108,6 +108,12 @@ class SkillsPage extends OpenClawLightDomElement {
     invalidateRequests: () => this.resetLoadedSkillState(),
     ensureInitialData: () => this.ensureInitialData(),
   });
+  private readonly library = new SkillLibraryController(
+    this,
+    this.gateway,
+    () => this.skillsAgentId ?? this.context.agents.state.agentsList?.defaultId ?? null,
+    () => this.refreshPage(),
+  );
   private readonly clawhubSearchTask = new Task(this, {
     autoRun: false,
     args: () =>
@@ -161,6 +167,7 @@ class SkillsPage extends OpenClawLightDomElement {
   }
 
   private resetLoadedSkillState() {
+    this.library.reset();
     void this.clawhubSearchTask.run([null, ""]);
     if (this.clawhubSearchTimer) {
       clearTimeout(this.clawhubSearchTimer);
@@ -205,7 +212,12 @@ class SkillsPage extends OpenClawLightDomElement {
       this.routeDataEnabled = false;
       return;
     }
-    if (this.skillsAgentId && data.selectedAgentId && data.selectedAgentId !== this.skillsAgentId) {
+    if (
+      this.skillsAgentId &&
+      data.selectedAgentId &&
+      data.selectedAgentId !== this.skillsAgentId &&
+      !data.clawhubRef
+    ) {
       return;
     }
     this.skillsAgentId = data.selectedAgentId ?? this.skillsAgentId;
@@ -215,9 +227,15 @@ class SkillsPage extends OpenClawLightDomElement {
     if (data.report) {
       void loadClawHubSecurityVerdicts(this, data.report);
     }
+    if (data.clawhubRef && data.clawhubRef !== this.clawhubDetailRef) {
+      void loadClawHubDetail(this, data.clawhubRef);
+    }
   }
 
   private ensureInitialData() {
+    if (this.library && !this.library.list && !this.library.loading && !this.library.error) {
+      void this.library.load();
+    }
     if (
       this.routeDataEnabled ||
       !this.routeDataInitialized ||
@@ -262,7 +280,7 @@ class SkillsPage extends OpenClawLightDomElement {
   }
 
   private async refreshPage() {
-    await refreshSkills(this, () => this.loadAgents());
+    await Promise.all([refreshSkills(this, () => this.loadAgents()), this.library.load()]);
   }
 
   private changeAgent(agentId: string) {
@@ -347,13 +365,7 @@ class SkillsPage extends OpenClawLightDomElement {
     if (tab === "skills") {
       return;
     }
-    if (tab === "workshop") {
-      this.context.navigate("skill-workshop");
-      return;
-    }
-    this.context.navigate("plugins", {
-      pathname: pathForPluginsHubTab(tab, this.context.basePath),
-    });
+    this.context.navigate("plugins");
   }
 
   override render() {
@@ -363,6 +375,10 @@ class SkillsPage extends OpenClawLightDomElement {
       ${renderPluginsHubHeader({
         active: "skills",
         onSelect: (tab) => this.selectHubTab(tab),
+        secondaryAction: {
+          label: t("pluginsPage.workshopTab"),
+          onClick: () => this.context.navigate("skill-workshop"),
+        },
       })}
       ${renderSettingsWorkspace(html`
         <wa-tab-panel
@@ -372,10 +388,15 @@ class SkillsPage extends OpenClawLightDomElement {
           aria-labelledby="plugins-tab-skills"
         >
           ${renderSkills({
+            library: renderSkillLibrary(this.library),
+            showInventory: this.library.showWorkspace,
+            personalImport: !this.library.showWorkspace,
             canUpdate: this.canUpdateSkills(),
-            canInstall: this.canInstallSkills(),
+            canInstall: this.library.showWorkspace
+              ? this.canInstallSkills()
+              : this.library.canWrite && Boolean(this.library.list?.profileId),
             connected: this.gateway.connected,
-            loading: this.skillsLoading || agents.agentsLoading,
+            loading: this.skillsLoading || agents.agentsLoading || this.library.busy,
             report: this.skillsReport,
             agentsList: agents.agentsList,
             selectedAgentId: this.skillsAgentId ?? agents.agentsList?.defaultId ?? null,
@@ -435,9 +456,15 @@ class SkillsPage extends OpenClawLightDomElement {
             onClawHubQueryChange: (query) => this.changeClawHubQuery(query),
             onClawHubDetailOpen: (ref) => void loadClawHubDetail(this, ref),
             onClawHubDetailClose: () => closeClawHubDetail(this),
-            onClawHubInstall: (ref, acknowledgeClawHubRisk, version) => {
-              if (this.canInstallSkills()) {
-                void installFromClawHub(this, ref, acknowledgeClawHubRisk, version);
+            onClawHubInstall: (ref, version) => {
+              if (!this.library.showWorkspace) {
+                this.clawhubDetailRef = null;
+                this.library.importSource = { slug: ref, version };
+                this.library.importSlug = "";
+                this.library.importOpen = true;
+                this.requestUpdate();
+              } else if (this.canInstallSkills()) {
+                void installFromClawHub(this, ref, version);
               }
             },
           })}

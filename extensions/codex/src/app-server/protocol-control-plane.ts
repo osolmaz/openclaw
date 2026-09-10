@@ -1,6 +1,17 @@
 import type { JsonObject, JsonValue } from "./protocol-json.js";
 
 /** Current Codex marketplace, app, skill, hook, and config wire contracts. */
+export type CodexExperimentalFeatureListParams = {
+  cursor?: string | null;
+  limit?: number | null;
+  threadId?: string | null;
+};
+
+export type CodexExperimentalFeatureListResponse = {
+  data: Array<{ name: string; enabled: boolean }>;
+  nextCursor?: string | null;
+};
+
 export type CodexPluginSummary = {
   id: string;
   remotePluginId?: string | null;
@@ -106,6 +117,8 @@ export type CodexAppInfo = {
   isAccessible: boolean;
   isEnabled: boolean;
   pluginDisplayNames: string[];
+  /** Present when app/read was requested with includeTools. */
+  toolSummaries?: CodexAppToolSummary[];
 };
 
 export type CodexAppsListParams = {
@@ -212,6 +225,7 @@ export type CodexHooksListResponse = {
 
 export type CodexConfigReadResponse = {
   config: JsonObject;
+  origins: Record<string, CodexConfigLayerMetadata | undefined>;
   layers?: JsonValue[] | null;
 };
 
@@ -222,7 +236,7 @@ export type CodexConfigReadParams = {
 
 type CodexConfigMergeStrategy = "replace" | "upsert";
 
-export type CodexConfigEdit = {
+type CodexConfigEdit = {
   keyPath: string;
   value: JsonValue;
   mergeStrategy: CodexConfigMergeStrategy;

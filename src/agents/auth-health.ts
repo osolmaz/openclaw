@@ -292,7 +292,7 @@ export function buildAuthHealthSummary(params: {
     : null;
 
   const profiles = Object.entries(params.store.profiles)
-    .filter(([_, cred]) =>
+    .filter(([, cred]) =>
       providerFilter ? providerFilter.has(normalizeProviderId(cred.provider)) : true,
     )
     .map(([profileId, credential]) =>
@@ -346,6 +346,7 @@ export function buildAuthHealthSummary(params: {
     const authProvider = resolveProviderIdForAuth(provider, {
       config: params.cfg,
       ...params.authAliasLookupParams,
+      storedCredential: true,
     });
     return (
       findNormalizedProviderValue(params.store.order, authProvider) ??

@@ -163,6 +163,10 @@ describe("device worker placement dispatch", () => {
       expect.stringMatching(/^session-dispatch:/u),
       undefined,
       REQUEST.executionMode,
+      "/gateway/workspace",
+      undefined,
+      undefined,
+      undefined,
     );
     expect(harness.environments.startTunnel).toHaveBeenCalledWith({
       environmentId: harness.ready.environmentId,
@@ -232,13 +236,17 @@ describe("device worker placement dispatch", () => {
       expect.stringMatching(/^session-dispatch:/u),
       undefined,
       "remote-exec",
+      "/gateway/workspace",
+      undefined,
+      undefined,
+      undefined,
     );
     const workspaceTunnel = await vi.mocked(harness.environments.startTunnel).mock.results[0]
       ?.value;
     expect(workspaceTunnel?.syncWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: request.sessionId,
-        localPath: expect.any(String),
+        source: { kind: "local", path: "/gateway/workspace" },
         generation: expect.any(Number),
       }),
     );
@@ -266,6 +274,10 @@ describe("device worker placement dispatch", () => {
       expect.stringMatching(/^session-dispatch:/u),
       undefined,
       "remote-exec",
+      "/gateway/workspace",
+      undefined,
+      undefined,
+      undefined,
     );
     const workspaceTunnel = await vi.mocked(harness.environments.startTunnel).mock.results[0]
       ?.value;
@@ -358,12 +370,10 @@ describe("device worker placement dispatch", () => {
       node: deviceProof(),
     }));
     const request = prepareCloudNodeDispatch(harness);
-    let authorizationChecks = 0;
 
     await expect(
       harness.service.dispatch(request, undefined, () => {
-        authorizationChecks += 1;
-        if (authorizationChecks === 2) {
+        if (harness.placements.current()?.state === "starting") {
           vi.mocked(harness.environments.get).mockReturnValue({
             ...harness.attached,
             providerId: "generic-cloud-node",
@@ -423,12 +433,10 @@ describe("device worker placement dispatch", () => {
       node: currentNode,
     }));
     const request = prepareCloudNodeDispatch(harness);
-    let authorizationChecks = 0;
 
     await expect(
       harness.service.dispatch(request, undefined, () => {
-        authorizationChecks += 1;
-        if (authorizationChecks === 2) {
+        if (harness.placements.current()?.state === "starting") {
           currentNode = {
             ...currentNode,
             connId: "replacement-connection",
@@ -464,12 +472,10 @@ describe("device worker placement dispatch", () => {
       node: currentNode,
     }));
     const request = prepareCloudNodeDispatch(harness);
-    let authorizationChecks = 0;
 
     await expect(
       harness.service.dispatch(request, undefined, () => {
-        authorizationChecks += 1;
-        if (authorizationChecks === 2) {
+        if (harness.placements.current()?.state === "starting") {
           if (scenario.revocation === "command") {
             currentNode = {
               ...currentNode,

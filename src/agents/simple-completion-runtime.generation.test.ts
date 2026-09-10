@@ -1,5 +1,7 @@
+import { createApiRegistry } from "@openclaw/ai";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Model } from "../llm/types.js";
+import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
 import type { resolveModelAsync } from "./embedded-agent-runner/model.js";
 import { AuthStorage, ModelRegistry } from "./sessions/index.js";
 
@@ -26,6 +28,7 @@ vi.mock("../plugins/runtime/generation-scope.js", async () => {
   const generation = new AsyncLocalStorage<string>();
   mocks.readGeneration = () => generation.getStore() ?? mocks.publishedGeneration;
   return {
+    getPluginRuntimeGenerationRegistry: () => undefined,
     withPluginRuntimeGenerationScope: (snapshot: { testGeneration?: string }, run: () => unknown) =>
       generation.run(snapshot.testGeneration ?? "unknown", run),
   };
@@ -45,12 +48,15 @@ vi.mock("../plugins/provider-runtime.runtime.js", () => ({
 
 vi.mock("./sessions/model-registry-runtime.js", () => ({
   initializeModelRegistryRuntime: vi.fn(),
-  getModelRegistryRuntime: () => ({ llmRuntime: { registry: {}, streamSimple: vi.fn() } }),
+  getModelRegistryRuntime: () => {
+    const apiRegistry = createApiRegistry();
+    return { apiRegistry, llmRuntime: { registry: apiRegistry, streamSimple: vi.fn() } };
+  },
 }));
 
 import {
   prepareSimpleCompletionModel,
-  prepareSimpleCompletionModelForAgent,
+  acquireSimpleCompletionModelForAgent,
 } from "./simple-completion-runtime.js";
 
 function createOllamaModelResolver(): typeof resolveModelAsync {
@@ -77,10 +83,9 @@ beforeEach(() => {
   mocks.acquireRuntimeLease.mockReset();
   mocks.getApiKeyForModel.mockReset();
   mocks.prepareProviderRuntimeAuth.mockReset();
-  mocks.resolvePluginMetadataSnapshot.mockReset().mockReturnValue({
-    plugins: [],
-    index: { plugins: [] },
-  });
+  mocks.resolvePluginMetadataSnapshot
+    .mockReset()
+    .mockReturnValue(createPluginMetadataSnapshotFixture());
   const authStorage = AuthStorage.inMemory({});
   const modelRegistry = ModelRegistry.inMemory(authStorage);
   mocks.acquireRuntimeLease.mockResolvedValue({
@@ -90,7 +95,7 @@ beforeEach(() => {
       workspaceDir: "/tmp/runtime-workspace",
       config: {},
       authModes: {},
-      metadataSnapshot: { plugins: [], index: { plugins: [] } },
+      metadataSnapshot: createPluginMetadataSnapshotFixture(),
       allowGatewaySubagentBinding: false,
       modelCatalog: { entries: [] },
       configuredRuntimeModels: [],
@@ -207,24 +212,30 @@ it("selects an explicit agent completion model before runtime acquisition", asyn
     mode: "api-key",
   });
 
-  await prepareSimpleCompletionModelForAgent({
+  const result = await acquireSimpleCompletionModelForAgent({
     cfg: {},
     agentId: "main",
     modelRef: "ollama/qwen3:0.6b",
     modelResolver,
   });
 
-  expect(mocks.acquireRuntimeLease).toHaveBeenCalledWith(
-    expect.objectContaining({
-      runtimePluginSelections: [{ provider: "ollama", modelId: "qwen3:0.6b", agentId: "main" }],
-    }),
-    expect.objectContaining({ catalogMode: "static" }),
-  );
-  expect(modelResolver).toHaveBeenCalledOnce();
+  try {
+    expect(mocks.acquireRuntimeLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimePluginSelections: [{ provider: "ollama", modelId: "qwen3:0.6b", agentId: "main" }],
+      }),
+      expect.objectContaining({ catalogMode: "static" }),
+    );
+    expect(modelResolver).toHaveBeenCalledOnce();
+  } finally {
+    if (!("error" in result)) {
+      result.release();
+    }
+  }
 });
 
 it("acquires the canonical manifest-derived utility model selection", async () => {
-  const metadataSnapshot = {
+  const metadataSnapshot = createPluginMetadataSnapshotFixture({
     plugins: [
       {
         id: "selected-provider",
@@ -238,11 +249,10 @@ it("acquires the canonical manifest-derived utility model selection", async () =
         },
       },
     ],
-    index: { plugins: [] },
-  };
+  });
   mocks.resolvePluginMetadataSnapshot.mockReturnValue(metadataSnapshot);
 
-  const result = await prepareSimpleCompletionModelForAgent({
+  const result = await acquireSimpleCompletionModelForAgent({
     cfg: {
       agents: { defaults: { model: "selected-provider/primary-model@work" } },
     },
@@ -256,26 +266,32 @@ it("acquires the canonical manifest-derived utility model selection", async () =
     })),
   });
 
-  expect(
-    mocks.resolvePluginMetadataSnapshot.mock.calls.filter(
-      ([params]) => (params as { pluginIdScope?: unknown } | undefined)?.pluginIdScope,
-    ),
-  ).toHaveLength(2);
-  expect(mocks.acquireRuntimeLease).toHaveBeenCalledWith(
-    expect.objectContaining({
-      runtimePluginSelections: [
-        { provider: "selected-provider", modelId: "utility-model", agentId: "main" },
-      ],
-      agentDir: "/tmp/canonical-agent",
-    }),
-    expect.objectContaining({ catalogMode: "static", pluginMetadataSnapshot: metadataSnapshot }),
-  );
-  expect(result).toMatchObject({
-    selection: {
-      provider: "selected-provider",
-      modelId: "utility-model",
-      profileId: "work",
-      agentDir: "/tmp/canonical-agent",
-    },
-  });
+  try {
+    expect(
+      mocks.resolvePluginMetadataSnapshot.mock.calls.filter(
+        ([params]) => (params as { pluginIdScope?: unknown } | undefined)?.pluginIdScope,
+      ),
+    ).toHaveLength(2);
+    expect(mocks.acquireRuntimeLease).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimePluginSelections: [
+          { provider: "selected-provider", modelId: "utility-model", agentId: "main" },
+        ],
+        agentDir: "/tmp/canonical-agent",
+      }),
+      expect.objectContaining({ catalogMode: "static", pluginMetadataSnapshot: metadataSnapshot }),
+    );
+    expect(result).toMatchObject({
+      selection: {
+        provider: "selected-provider",
+        modelId: "utility-model",
+        profileId: "work",
+        agentDir: "/tmp/canonical-agent",
+      },
+    });
+  } finally {
+    if (!("error" in result)) {
+      result.release();
+    }
+  }
 });

@@ -85,8 +85,8 @@ export function resolveAgentProfilePreserveToolNames(params?: {
   return [...new Set(names)];
 }
 
-export function filterToolsByAgentProfile(params: {
-  tools: AnyAgentTool[];
+export function filterToolsByAgentProfile<T extends Pick<AnyAgentTool, "name">>(params: {
+  tools: T[];
   config?: OpenClawConfig;
   agentId?: string;
   sessionKey?: string;
@@ -95,7 +95,7 @@ export function filterToolsByAgentProfile(params: {
   modelSizeClass?: ModelSizeClass;
   resolvedProfile?: ResolvedAgentProfile;
   preserveToolNames?: Iterable<string>;
-}): AnyAgentTool[] {
+}): T[] {
   const resolved = params.resolvedProfile ?? resolveAgentProfile(params);
   if (resolved.profile.spec["openclaw.ai"]?.toolProfile !== "lean") {
     return params.tools;
