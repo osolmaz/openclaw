@@ -146,8 +146,7 @@ function buildExecRunOverlay(params: {
   const listedAgentOverlays = (params.base.agents?.list ?? []).map((entry) =>
     Object.assign({}, entry, { workspace: params.cwd }, agentProfileId ? { agentProfileId } : {}),
   );
-  // SAFETY: every overlay field is a validated OpenClaw config field.
-  return {
+  const overlay = {
     agents: {
       defaults: {
         workspace: params.cwd,
@@ -172,7 +171,9 @@ function buildExecRunOverlay(params: {
     // This process exits after one turn, so live skill invalidation cannot be
     // observed and would leave Chokidar retaining the otherwise-finished CLI.
     skills: { load: { watch: false } },
-  } as OpenClawConfig;
+  };
+  // SAFETY: every overlay field is a validated OpenClaw config field.
+  return overlay as OpenClawConfig;
 }
 
 /**
@@ -252,11 +253,10 @@ export function buildExecRunConfig(params: {
 }): OpenClawConfig {
   const opts = params.opts ?? {};
   const base = stripInheritedAgentLocations(params.base);
+  const mergedDefaults = mergeDeep(buildExecConfigDefaults(), base);
   // SAFETY: both merge inputs conform to OpenClawConfig.
-  const withDefaults = mergeDeep(buildExecConfigDefaults(), base) as OpenClawConfig;
+  const withDefaults = mergedDefaults as OpenClawConfig;
+  const merged = mergeDeep(withDefaults, buildExecRunOverlay({ base, cwd: params.cwd, opts }));
   // SAFETY: the base config and invocation overlay conform to OpenClawConfig.
-  return mergeDeep(
-    withDefaults,
-    buildExecRunOverlay({ base, cwd: params.cwd, opts }),
-  ) as OpenClawConfig;
+  return merged as OpenClawConfig;
 }
