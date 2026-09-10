@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExecRunConfig } from "./agent-exec.js";
+import { buildExecRunConfig } from "./agent-exec-input.js";
 
 describe("agent exec Agent Profile override", () => {
   it("overrides per-agent profile selections", () => {
