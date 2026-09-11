@@ -1,18 +1,14 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { validateAgentProfile } from "agentprofiles";
 import { afterEach, describe, expect, it } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { loadWorkspaceBootstrapFiles } from "../workspace.js";
 import { resolveOpenClawAgentProfileExtension } from "./openclaw-extension.js";
 import type { ResolvedAgentProfile } from "./resolve.js";
 import { prepareAgentProfileWorkspaceContext } from "./workspace-context.js";
 
-const tempDirs: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
-});
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 
 function resolvedProfile(extension?: unknown): ResolvedAgentProfile {
   const resource = validateAgentProfile({
@@ -38,9 +34,7 @@ function resolvedProfile(extension?: unknown): ResolvedAgentProfile {
 }
 
 async function workspace() {
-  const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "profile-context-")));
-  tempDirs.push(dir);
-  return dir;
+  return await fs.realpath(tempDirs.make("profile-context-"));
 }
 
 function source(
