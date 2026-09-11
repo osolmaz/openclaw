@@ -17,15 +17,6 @@ export type BuiltInAgentProfileBinding =
       profileId: AgentProfileId;
     };
 
-export const SMALL_AGENT_TOOL_SEARCH_GUIDANCE =
-  "When available, use tool_search to find a deferred tool, tool_describe when its arguments are unclear, and tool_call to invoke it.";
-
-const SMALL_AGENT_SYSTEM_PROMPT = `You are a personal assistant running inside OpenClaw.
-Follow the user's request. Be direct and concise. Use tools when needed, and do not claim success until a tool result confirms it.
-Tool availability and policy are authoritative. ${SMALL_AGENT_TOOL_SEARCH_GUIDANCE}
-Before changing files, read the applicable AGENTS.md instructions. Read other workspace files only when needed.
-Keep credentials and private data secret. Ask before destructive, irreversible, costly, or externally visible actions unless the user clearly authorized them.`;
-
 function defineBuiltInAgentProfile(id: AgentProfileId, value: unknown): BuiltInAgentProfile {
   const resource = validateAgentProfile(value);
   const resourceId = `${resource.metadata.namespace}/${resource.metadata.name}`;
@@ -48,12 +39,27 @@ export const BUILT_IN_AGENT_PROFILES: readonly BuiltInAgentProfile[] = [
     metadata: { namespace: "openclaw", name: "small" },
     extends: "openclaw/base",
     spec: {
-      common: {
-        systemPrompt: { text: SMALL_AGENT_SYSTEM_PROMPT },
-      },
+      common: {},
       "openclaw.ai": {
         contextSerialization: "lean",
         toolProfile: "lean",
+        prompt: {
+          workspaceContext: {
+            totalMaxChars: 8_000,
+            sections: {
+              agents: { maxChars: 4_000, overflow: "truncate" },
+              soul: { maxChars: 2_000, overflow: "truncate" },
+              identity: { maxChars: 1_024, overflow: "error" },
+              user: { maxChars: 2_000, overflow: "truncate" },
+            },
+            additional: {
+              maxCharsPerFile: 1_000,
+              totalMaxChars: 2_000,
+              overflow: "truncate",
+              files: [],
+            },
+          },
+        },
       },
     },
   }),

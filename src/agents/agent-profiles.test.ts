@@ -122,55 +122,16 @@ describe("Agent Profile selection", () => {
 });
 
 describe("small profile prompt behavior", () => {
-  const resolvedProfile = resolveAgentProfile({
-    modelProvider: "llama-cpp",
-    modelId: "qwen3.6-35b-a3b",
-  });
-
-  it("uses a minimum prompt instead of the standard OpenClaw prompt", () => {
-    const prompt = buildAgentProfileSystemPrompt({
-      resolvedProfile,
-      toolNames: ["tool_search", "tool_describe", "tool_call"],
-    });
-
-    expect(prompt).toContain("You are a personal assistant running inside OpenClaw.");
-    expect(prompt).toContain("use tool_search to find a deferred tool");
-    expect(prompt).toContain("read the applicable AGENTS.md instructions");
-    expect(prompt).toContain("Return the visible reply as assistant text.");
-    expect(prompt?.length).toBeLessThan(1_000);
-  });
-
-  it("does not advertise tools that are absent from the exposed surface", () => {
-    const prompt = buildAgentProfileSystemPrompt({
-      resolvedProfile,
-      toolNames: [],
-    });
-
-    expect(prompt).not.toContain("tool_search");
-    expect(prompt).not.toContain("tool_describe");
-    expect(prompt).not.toContain("tool_call");
-    expect(prompt).not.toContain("message tool");
-  });
-
-  it("preserves runtime-supplied system instructions", () => {
-    const prompt = buildAgentProfileSystemPrompt({
-      resolvedProfile,
-      toolNames: ["tool_search", "tool_describe", "tool_call"],
-      runtimeSystemPrompt: "Complete the delegated task: RUNTIME_CONTEXT_MARKER",
-    });
-
-    expect(prompt).toContain("RUNTIME_CONTEXT_MARKER");
-  });
-
-  it("preserves message-owned delivery instructions", () => {
-    const prompt = buildAgentProfileSystemPrompt({
-      resolvedProfile,
-      sourceReplyDeliveryMode: "message_tool_only",
-      toolNames: ["message"],
-    });
-
-    expect(prompt).toContain("Send the visible reply with the message tool.");
-    expect(prompt).toContain("return exactly NO_REPLY");
+  it("uses the standard compositional prompt path", () => {
+    expect(
+      buildAgentProfileSystemPrompt({
+        resolvedProfile: resolveAgentProfile({
+          modelProvider: "llama-cpp",
+          modelId: "qwen3.6-35b-a3b",
+        }),
+        toolNames: [],
+      }),
+    ).toBeUndefined();
   });
 
   it("leaves the base profile on the standard prompt path", () => {

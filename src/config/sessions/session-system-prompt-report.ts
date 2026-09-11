@@ -31,6 +31,26 @@ export type SessionSystemPromptReport = {
     nearLimitFiles?: number;
     totalNearLimit?: boolean;
   };
+  workspaceContext?: {
+    totalMaxChars: number;
+    operatorMaxChars: number;
+    operatorTotalMaxChars: number;
+    rawChars: number;
+    injectedChars: number;
+    truncatedChars: number;
+    entries: Array<{
+      section: string;
+      kind: "canonical" | "additional";
+      path: string;
+      missing: boolean;
+      overflow: "truncate" | "error";
+      rawChars: number;
+      effectiveMaxChars: number;
+      injectedChars: number;
+      truncated: boolean;
+      causes: Array<"section-limit" | "additional-pool-limit" | "aggregate-limit">;
+    }>;
+  };
   sandbox?: {
     mode?: string;
     sandboxed?: boolean;

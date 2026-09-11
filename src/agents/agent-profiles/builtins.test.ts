@@ -21,13 +21,28 @@ describe("built-in Agent Profile resources", () => {
   it("keeps OpenClaw settings out of portable common fields", () => {
     const small = builtIn("openclaw/small");
 
-    expect(small.resource.spec.common).toEqual({
-      systemPrompt: expect.objectContaining({ text: expect.any(String) }),
-    });
+    expect(small.resource.spec.common).toEqual({});
     expect(small.resource.spec.common).not.toHaveProperty("contextSerialization");
     expect(resolveOpenClawAgentProfileExtension([small])).toEqual({
       contextSerialization: "lean",
       toolProfile: "lean",
+      prompt: {
+        workspaceContext: {
+          totalMaxChars: 8_000,
+          sections: {
+            agents: { maxChars: 4_000, overflow: "truncate" },
+            soul: { maxChars: 2_000, overflow: "truncate" },
+            identity: { maxChars: 1_024, overflow: "error" },
+            user: { maxChars: 2_000, overflow: "truncate" },
+          },
+          additional: {
+            maxCharsPerFile: 1_000,
+            totalMaxChars: 2_000,
+            overflow: "truncate",
+            files: [],
+          },
+        },
+      },
     });
   });
 });

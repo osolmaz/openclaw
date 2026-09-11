@@ -3,7 +3,6 @@ import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { SMALL_AGENT_TOOL_SEARCH_GUIDANCE } from "./agent-profiles/builtins.js";
 import { resolveAgentProfile, type ResolvedAgentProfile } from "./agent-profiles/resolve.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import { compileGlobPatterns, matchesAnyGlobPattern } from "./glob-pattern.js";
@@ -23,7 +22,6 @@ const LEAN_TOOL_DENY_NAMES = new Set([
   "tts",
   "video_generate",
 ]);
-const TOOL_SEARCH_PROMPT_TOOL_NAMES = ["tool_search", "tool_describe", "tool_call"] as const;
 const LEAN_TOOL_SEARCH_DEFAULTS = {
   enabled: true,
   mode: "tools",
@@ -48,10 +46,7 @@ export function buildAgentProfileSystemPrompt(params: {
   }
   const toolNames = new Set(params.toolNames);
   const messageToolAvailable = toolNames.has("message");
-  const toolSearchAvailable = TOOL_SEARCH_PROMPT_TOOL_NAMES.every((name) => toolNames.has(name));
-  const sourceText = toolSearchAvailable
-    ? source.text.trim()
-    : source.text.replace(` ${SMALL_AGENT_TOOL_SEARCH_GUIDANCE}`, "").trim();
+  const sourceText = source.text.trim();
   const deliveryInstruction =
     params.sourceReplyDeliveryMode === "message_tool_only" && messageToolAvailable
       ? `Send the visible reply with the message tool. After it succeeds, return exactly ${SILENT_REPLY_TOKEN}.`

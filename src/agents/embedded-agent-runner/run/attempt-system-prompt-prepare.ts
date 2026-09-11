@@ -321,6 +321,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       warningMode: params.bootstrap.bootstrapPromptWarningMode,
       warning: params.bootstrap.bootstrapPromptWarning,
     }),
+    workspaceContext: params.bootstrap.workspaceContextReport,
     sandbox: (() => {
       const runtime = resolveSandboxRuntimeStatus({
         cfg: attempt.config,

@@ -41,12 +41,12 @@ OpenClaw extension resolution remain separate.
 
 ## Built-in profiles
 
-| Profile           | Parent          | Initial behavior                                                        |
-| ----------------- | --------------- | ----------------------------------------------------------------------- |
-| `openclaw/base`   | none            | Standard OpenClaw behavior and fallback                                 |
-| `openclaw/small`  | `openclaw/base` | Minimum prompt, lean tools, Tool Search, and lean context serialization |
-| `openclaw/medium` | `openclaw/base` | Base behavior with a stable medium-model identity                       |
-| `openclaw/large`  | `openclaw/base` | Base behavior with a stable large-model identity                        |
+| Profile           | Parent          | Initial behavior                                                                   |
+| ----------------- | --------------- | ---------------------------------------------------------------------------------- |
+| `openclaw/base`   | none            | Standard OpenClaw behavior and fallback                                            |
+| `openclaw/small`  | `openclaw/base` | Composed prompt with bounded workspace context, lean tools, and lean serialization |
+| `openclaw/medium` | `openclaw/base` | Base behavior with a stable medium-model identity                                  |
+| `openclaw/large`  | `openclaw/base` | Base behavior with a stable large-model identity                                   |
 
 ## Automatic selection
 
@@ -142,12 +142,23 @@ overrides the selected profile. If none sets the value, OpenClaw uses
 
 ## Small profile behavior
 
-`openclaw/small` replaces the standard OpenClaw system prompt with a built-in
-minimum prompt. The minimum prompt covers tool-result truth, deferred tool use,
-on-demand `AGENTS.md` loading, private data, risky actions, concise replies, and
-active delivery behavior. It does not inject workspace files or the skill
-catalog. The model can read applicable workspace instructions and use deferred
-tools when the task needs them.
+`openclaw/small` uses the normal OpenClaw prompt composer. It does not replace
+the complete system prompt. Its OpenClaw extension limits injected workspace
+context to 8,000 characters, which is a rough 2,000-token proxy at four
+characters per token. This is not an exact tokenizer limit and does not include
+conversation history, tool schemas, skills, memory, or generated prompt text.
+
+The profile keeps `IDENTITY.md` available so the model receives the configured
+assistant identity. It applies per-section limits first and then divides the
+remaining aggregate budget proportionally across truncatable content. Protected
+`overflow: "error"` content is not truncated. Existing operator and security
+limits remain upper ceilings.
+
+OpenClaw owns the strict `spec["openclaw.ai"].prompt.workspaceContext` schema,
+inheritance, declared custom-file loading, allocation, and diagnostics. Custom
+files require explicit workspace-relative paths; OpenClaw does not scan for
+undeclared files. See [Agent workspace](/concepts/agent-workspace) and
+[workspace and bootstrap configuration](/gateway/config-agents/workspace-and-bootstrap).
 
 The profile also removes the same heavyweight optional tools as the retired
 Lean toggle: `browser`, `automations`, `message`, `image_generate`,
@@ -177,7 +188,9 @@ selection source in the stored system-prompt report. They also show the direct
 tool schemas used for the request. Detailed context reports show the context
 serialization value and source, default and serialized character counts,
 durable-ID removal counts, and provider input tokens when the provider reports
-them. Reports do not include private message content.
+them. They also show the resolved workspace-context budget and per-section
+allocation or truncation status. Reports do not include private message or
+workspace-file content.
 
 ## Legacy migration
 

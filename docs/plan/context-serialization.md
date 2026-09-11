@@ -23,7 +23,7 @@ A measured tiny Discord turn increased context by about 239 tokens. This number 
 - Keep current behavior for users who do not select `lean`.
 - Let normal OpenClaw config and Agent Profiles select the same runtime behavior.
 - Keep automatic provider, model, and model-size profile selection.
-- Make the built-in `openclaw/small` profile use `lean` while keeping its current minimal system prompt, lean tools, and Tool Search defaults.
+- Make the built-in `openclaw/small` profile use `lean` while keeping lean tools and Tool Search defaults. Workspace prompt composition and its separate character budget are defined in the [Agent Profile workspace context plan](/plan/agent-profile-workspace-context).
 - Send each active transcript message once in `lean` mode.
 - Keep facts that the model needs for speakers, replies, mentions, delivery, tools, and tool results.
 - Keep channel backlog that is not already in the active transcript.
@@ -284,7 +284,7 @@ Uncertain deduplication keeps context. Invalid configuration fails schema valida
 This release does not add:
 
 - field-level serialization controls;
-- adaptive token budgets or token-ranked context selection;
+- adaptive token budgets or token-ranked conversation selection; workspace-file character allocation is a separate OpenClaw-owned prompt control;
 - provider-specific serialization modes;
 - a second conversation runtime or persistence format;
 - stored transcript rewrites;
@@ -296,6 +296,8 @@ This release does not add:
 - an OpenClaw release or deployment;
 - an upstream OpenClaw submission;
 - a merge of the OpenClaw fork PR.
+
+Workspace-file composition, identity preservation, and the small profile's 8,000-character workspace-context limit are separate from conversation serialization. See the [Agent Profile workspace context plan](/plan/agent-profile-workspace-context).
 
 The only package release in scope is `agentprofiles` 0.1.0 from the Agent Profiles repository.
 

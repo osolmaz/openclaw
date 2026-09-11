@@ -387,10 +387,25 @@ export async function buildContextReply(params: HandleCommandsParams): Promise<R
           : []),
       ]
     : [];
+  const workspaceContextLines = report.workspaceContext
+    ? [
+        `Agent Profile workspace context: ${formatInt(report.workspaceContext.injectedChars)} / ${formatInt(report.workspaceContext.totalMaxChars)} chars; ${formatInt(report.workspaceContext.truncatedChars)} chars removed`,
+        ...(sub === "detail" || sub === "deep"
+          ? [
+              "Agent Profile workspace sections:",
+              ...report.workspaceContext.entries.map((entry) => {
+                const causes = entry.causes.length > 0 ? `; ${entry.causes.join(", ")}` : "";
+                return `- ${entry.section}: ${formatInt(entry.injectedChars)} / ${formatInt(entry.rawChars)} chars (${entry.overflow}${causes})`;
+              }),
+            ]
+          : []),
+      ]
+    : [];
   const sharedContextLines = [
     `Workspace: ${workspaceLabel}`,
     `Bootstrap max/file: ${bootstrapMaxLabel}`,
     `Bootstrap max/total: ${bootstrapTotalLabel}`,
+    ...workspaceContextLines,
     sandboxLine,
     systemPromptLine,
     ...contextSerializationLine,

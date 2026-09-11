@@ -1,8 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  buildAgentProfileSystemPrompt,
-  resolveAgentProfile,
-} from "../src/agents/agent-profiles.js";
+import { resolveAgentProfile } from "../src/agents/agent-profiles.js";
 import { serializeRuntimeContext } from "../src/agents/context-serialization/project.js";
 import { buildOpenAICompletionsParams } from "../src/agents/openai-transport-stream.js";
 import {
@@ -136,13 +133,12 @@ function buildSystemPrompt() {
     modelProvider: "llama-cpp",
     modelId: MODEL_ID,
   });
-  const systemPrompt = buildAgentProfileSystemPrompt({
-    resolvedProfile,
-    toolNames: tools.map((tool) => tool.name),
-  });
-  if (!systemPrompt || resolvedProfile.profile.id !== "openclaw/small") {
+  if (resolvedProfile.profile.id !== "openclaw/small") {
     throw new Error("the target model must resolve to openclaw/small");
   }
+  // Keep conversation-serialization gates independent from workspace prompt
+  // composition. Prompt composition has separate focused tests and budgets.
+  const systemPrompt = "You are a personal assistant running inside OpenClaw.";
   return { profileId: resolvedProfile.profile.id, systemPrompt };
 }
 

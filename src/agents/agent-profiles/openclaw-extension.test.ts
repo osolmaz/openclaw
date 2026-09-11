@@ -39,6 +39,100 @@ describe("OpenClaw Agent Profile extension", () => {
     });
   });
 
+  it("deeply inherits workspace context and merges additional files by path", () => {
+    const resolved = resolveOpenClawAgentProfileExtension([
+      {
+        id: "openclaw/parent",
+        resource: profile({
+          name: "parent",
+          extension: {
+            prompt: {
+              workspaceContext: {
+                totalMaxChars: 8_000,
+                sections: {
+                  identity: { maxChars: 1_024, overflow: "error" },
+                  soul: { maxChars: 2_000 },
+                },
+                additional: {
+                  maxCharsPerFile: 500,
+                  files: [{ path: "notes/PROJECT.md", overflow: "truncate" }],
+                },
+              },
+            },
+          },
+        }),
+      },
+      {
+        id: "openclaw/child",
+        resource: profile({
+          name: "child",
+          extension: {
+            prompt: {
+              workspaceContext: {
+                sections: { soul: { include: false } },
+                additional: {
+                  totalMaxChars: 900,
+                  files: [{ path: "notes/PROJECT.md", maxChars: 700 }, { path: "CONTEXT.md" }],
+                },
+              },
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(resolved?.prompt?.workspaceContext).toEqual({
+      totalMaxChars: 8_000,
+      sections: {
+        identity: { maxChars: 1_024, overflow: "error" },
+        soul: { maxChars: 2_000, include: false },
+      },
+      additional: {
+        maxCharsPerFile: 500,
+        totalMaxChars: 900,
+        files: [
+          { path: "notes/PROJECT.md", overflow: "truncate", maxChars: 700 },
+          { path: "CONTEXT.md" },
+        ],
+      },
+    });
+  });
+
+  it.each([
+    { additional: { files: [{ path: "../secret.md" }] } },
+    { additional: { files: [{ path: "/etc/passwd" }] } },
+    { additional: { files: [{ path: "notes/*.md" }] } },
+    { additional: { files: [{ path: "notes.md" }, { path: "notes.md" }] } },
+  ])("rejects unsafe or duplicate declared paths: $additional", (workspaceContext) => {
+    expect(() =>
+      resolveOpenClawAgentProfileExtension([
+        {
+          id: "openclaw/invalid",
+          resource: profile({
+            name: "invalid",
+            extension: { prompt: { workspaceContext } },
+          }),
+        },
+      ]),
+    ).toThrow(/Invalid openclaw\.ai section/s);
+  });
+
+  it("rejects unknown workspace context fields", () => {
+    expect(() =>
+      resolveOpenClawAgentProfileExtension([
+        {
+          id: "openclaw/invalid",
+          resource: profile({
+            name: "invalid",
+            extension: {
+              prompt: { workspaceContext: { tokenLimit: 2_000 } },
+            },
+          }),
+        },
+      ]),
+    ).toThrow(/Invalid openclaw\.ai section.*tokenLimit/s);
+  });
+
   it("rejects fields that OpenClaw does not own", () => {
     expect(() =>
       resolveOpenClawAgentProfileExtension([

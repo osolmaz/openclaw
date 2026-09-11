@@ -169,6 +169,33 @@ injection behavior from the shared defaults. Omitted fields inherit from
 }
 ```
 
+## Agent Profile workspace-context limits
+
+The selected Agent Profile can tighten workspace-file injection through the
+OpenClaw-owned `spec["openclaw.ai"].prompt.workspaceContext` section. These
+profile limits do not replace the operator settings above. For each file and
+for the total, OpenClaw uses the lower applicable limit. A profile cannot raise
+an operator or runtime ceiling.
+
+The policy supports canonical sections for `AGENTS.md`, `SOUL.md`,
+`IDENTITY.md`, and `USER.md`. Each section can set `include`, `maxChars`, and
+`overflow`. The `additional` block can declare exact workspace-relative paths,
+a fallback per-file limit, an additional-file pool limit, and a fallback
+overflow policy. Absolute paths, traversal, globs, and undeclared files are not
+accepted.
+
+OpenClaw first applies effective per-file limits. Content with
+`overflow: "error"` must fit and is reserved in full. It then applies the
+additional-file pool and divides any remaining aggregate budget proportionally
+across truncatable content by actual bounded character size. Deterministic
+rounding preserves stable output. Truncation is UTF-safe and includes a marker.
+
+The built-in `openclaw/small` profile uses an 8,000-character aggregate limit
+for managed workspace context. This is a rough 2,000-token proxy at four
+characters per token, not an exact tokenizer limit or a limit on the complete
+provider request. `BOOTSTRAP.md`, `BOOT.md`, memory, conversation history,
+skills, and tool schemas keep their separate controls and lifecycle rules.
+
 ## Bootstrap truncation notice
 
 When bootstrap context is truncated, OpenClaw always injects a concise
@@ -186,7 +213,8 @@ knob.
 
 | Budget                                                         | Covers                                                                                                                                                          |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents.defaults.bootstrapMaxChars` / `bootstrapTotalMaxChars` | Normal workspace bootstrap injection                                                                                                                            |
+| `agents.defaults.bootstrapMaxChars` / `bootstrapTotalMaxChars` | Operator ceilings for normal workspace bootstrap injection                                                                                                      |
+| `spec["openclaw.ai"].prompt.workspaceContext`                  | Agent Profile limits for canonical and explicitly declared workspace context; cannot raise operator ceilings                                                    |
 | `agents.defaults.startupContext.*`                             | One-shot reset/startup model-run prelude, including recent daily `memory/*.md` files. Bare chat `/new` and `/reset` are acknowledged without invoking the model |
 | `skills.limits.*`                                              | The compact skills list injected into the system prompt                                                                                                         |
 | `agents.defaults.contextLimits.*`                              | Bounded runtime excerpts and injected runtime-owned blocks                                                                                                      |

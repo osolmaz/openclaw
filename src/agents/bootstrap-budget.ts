@@ -79,7 +79,9 @@ export function resolveBootstrapWarningSignaturesSeen(report?: {
  * source paths into the prompt workspace.
  */
 export function buildBootstrapInjectionStats(params: {
-  bootstrapFiles: WorkspaceBootstrapFile[];
+  bootstrapFiles: Array<
+    Pick<WorkspaceBootstrapFile, "path" | "content" | "missing"> & { name?: string }
+  >;
   injectedFiles: EmbeddedContextFile[];
 }): BootstrapInjectionStat[] {
   const injectedByPath = new Map<string, string>();

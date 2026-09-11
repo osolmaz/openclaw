@@ -200,6 +200,31 @@ async function readWorkspaceFileWithGuards(params: {
   }
 }
 
+export type DeclaredWorkspaceContextReadResult =
+  | { ok: true; path: string; content: string }
+  | { ok: false; path: string; reason: "path" | "validation" | "io"; error?: unknown };
+
+/** Reads one explicitly declared workspace-relative context file through normal guards. */
+export async function readDeclaredWorkspaceContextFile(params: {
+  workspaceDir: string;
+  relativePath: string;
+}): Promise<DeclaredWorkspaceContextReadResult> {
+  const workspaceDir = resolveUserPath(params.workspaceDir);
+  const filePath = path.resolve(workspaceDir, params.relativePath);
+  if (!isPathInside(workspaceDir, filePath)) {
+    return {
+      ok: false,
+      path: filePath,
+      reason: "validation",
+      error: new Error("declared workspace context path resolves outside the workspace"),
+    };
+  }
+  const loaded = await readWorkspaceFileWithGuards({ filePath, workspaceDir });
+  return loaded.ok
+    ? { ok: true, path: filePath, content: loaded.content }
+    : { ok: false, path: filePath, reason: loaded.reason, error: loaded.error };
+}
+
 function stripFrontMatter(content: string): string {
   return extractFrontmatterBlock(content)?.body.replace(/^\s+/, "") ?? content;
 }

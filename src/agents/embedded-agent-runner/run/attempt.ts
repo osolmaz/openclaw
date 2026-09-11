@@ -237,6 +237,7 @@ export async function runEmbeddedAttempt(
       prepareEmbeddedAttemptBootstrap({
         attempt: params,
         setup,
+        agentProfile: preparedToolBase.agentProfile,
         hasReadTool: toolsEnabled && toolsRaw.some((tool) => tool.name === "read"),
         isRawModelRun,
       }),
