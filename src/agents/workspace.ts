@@ -220,9 +220,12 @@ export async function readDeclaredWorkspaceContextFile(params: {
     };
   }
   const loaded = await readWorkspaceFileWithGuards({ filePath, workspaceDir });
-  return loaded.ok
-    ? { ok: true, path: filePath, content: loaded.content }
-    : { ok: false, path: filePath, reason: loaded.reason, error: loaded.error };
+  if (!loaded.ok) {
+    return { ok: false, path: filePath, reason: loaded.reason, error: loaded.error };
+  }
+  const result = { ok: true as const, path: filePath, content: loaded.content };
+  setWorkspaceFileSourceIdentity(result, loaded.sourceIdentity);
+  return result;
 }
 
 function stripFrontMatter(content: string): string {

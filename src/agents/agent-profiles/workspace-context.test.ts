@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { validateAgentProfile } from "agentprofiles";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadWorkspaceBootstrapFiles } from "../workspace.js";
 import { resolveOpenClawAgentProfileExtension } from "./openclaw-extension.js";
 import type { ResolvedAgentProfile } from "./resolve.js";
 import { prepareAgentProfileWorkspaceContext } from "./workspace-context.js";
@@ -191,6 +192,30 @@ describe("Agent Profile workspace context", () => {
       }),
     ).rejects.toThrow(/Unable to load declared Agent Profile workspace context missing\.md/s);
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a contained symlink alias of a canonical workspace file",
+    async () => {
+      const dir = await workspace();
+      await fs.writeFile(path.join(dir, "AGENTS.md"), "agent instructions");
+      await fs.symlink(dir, path.join(dir, "alias"), "dir");
+      const bootstrapFiles = await loadWorkspaceBootstrapFiles(dir, ["AGENTS.md"]);
+
+      await expect(
+        prepareAgentProfileWorkspaceContext({
+          resolvedProfile: resolvedProfile({
+            prompt: {
+              workspaceContext: {
+                additional: { files: [{ path: "alias/AGENTS.md" }] },
+              },
+            },
+          }),
+          bootstrapFiles,
+          workspaceDir: dir,
+        }),
+      ).rejects.toThrow(/alias\/AGENTS\.md duplicates a canonical workspace file/s);
+    },
+  );
 
   it("rejects a declared symlink that escapes the workspace", async () => {
     const dir = await workspace();

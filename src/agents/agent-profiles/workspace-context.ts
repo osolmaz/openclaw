@@ -15,6 +15,7 @@ import {
   DEFAULT_USER_FILENAME,
   readDeclaredWorkspaceContextFile,
   type WorkspaceBootstrapFile,
+  workspaceFilesShareSourceIdentity,
 } from "../workspace.js";
 import type {
   OpenClawWorkspaceContext,
@@ -239,7 +240,10 @@ async function loadAdditionalFiles(params: {
         `Unable to load declared Agent Profile workspace context ${relativePath}: ${detail}`,
       );
     }
-    if (canonicalPaths.has(path.resolve(loaded.path))) {
+    if (
+      canonicalPaths.has(path.resolve(loaded.path)) ||
+      params.canonicalFiles.some((file) => workspaceFilesShareSourceIdentity(file, loaded))
+    ) {
       throw new Error(
         `Declared Agent Profile workspace context ${relativePath} duplicates a canonical workspace file`,
       );
