@@ -147,7 +147,7 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
       if (profileContext) {
         workspaceContextReport = profileContext.report;
         return {
-          bootstrapFiles: profileContext.sourceFiles as WorkspaceBootstrapFile[],
+          bootstrapFiles: profileContext.sourceFiles,
           contextFiles: profileContext.contextFiles,
         };
       }
