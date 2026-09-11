@@ -62,6 +62,7 @@ import {
   resolvePreparedRunAdmission,
 } from "../admitted-run-context.js";
 import { resolveAgentProfile } from "../agent-profiles.js";
+import { prepareAgentProfileWorkspaceContext } from "../agent-profiles/workspace-context.js";
 import { hasAgentRosterProperty, resolveAgentWorkspaceDir } from "../agent-scope-config.js";
 import { resolveAgentDir, resolveSessionAgentIds } from "../agent-scope.js";
 import { hasUsableOAuthCredential } from "../auth-profiles/credential-state.js";
@@ -1150,12 +1151,26 @@ async function prepareCliRunContextWithinReadFence(
   const autoReseedHistoryChars = isClaudeCli
     ? resolveAutoCliSessionReseedHistoryChars(contextWindowInfo.tokens)
     : undefined;
+  const resolvedProfile = resolveAgentProfile({
+    config: params.config,
+    agentId: sessionAgentId,
+    sessionKey: params.sessionKey,
+    modelProvider,
+    modelId,
+    modelSizeClass: agentProfileModelSizeClass,
+  });
 
   const sessionLabel = params.sessionKey ?? params.sessionId;
-  const { bootstrapFiles, contextFiles: resolvedContextFiles } = skipsTurnPreparation
+  const bootstrapWorkspaceDir = params.bootstrapWorkspaceDir ?? workspaceDir;
+  const bootstrapWarn = prepareDeps.makeBootstrapWarn({
+    sessionLabel,
+    workspaceDir,
+    warn: (message) => cliBackendLog.warn(message),
+  });
+  const resolvedBootstrap = skipsTurnPreparation
     ? { bootstrapFiles: [], contextFiles: [] }
     : await prepareDeps.resolveBootstrapContextForRun({
-        workspaceDir: params.bootstrapWorkspaceDir ?? workspaceDir,
+        workspaceDir: bootstrapWorkspaceDir,
         config: params.config,
         sessionKey: params.sessionKey,
         sessionId: params.sessionId,
@@ -1163,12 +1178,21 @@ async function prepareCliRunContextWithinReadFence(
         agentId: sessionAgentId,
         contextMode: params.bootstrapContextMode,
         runKind: params.bootstrapContextRunKind,
-        warn: prepareDeps.makeBootstrapWarn({
-          sessionLabel,
-          workspaceDir,
-          warn: (message) => cliBackendLog.warn(message),
-        }),
+        warn: bootstrapWarn,
       });
+  const profileContext = skipsTurnPreparation
+    ? undefined
+    : await prepareAgentProfileWorkspaceContext({
+        resolvedProfile,
+        bootstrapFiles: resolvedBootstrap.bootstrapFiles,
+        workspaceDir: bootstrapWorkspaceDir,
+        config: params.config,
+        agentId: sessionAgentId,
+        warn: bootstrapWarn,
+      });
+  const bootstrapFiles = profileContext?.sourceFiles ?? resolvedBootstrap.bootstrapFiles;
+  const resolvedContextFiles = profileContext?.contextFiles ?? resolvedBootstrap.contextFiles;
+  const workspaceContextReport = profileContext?.report;
   // Mirror the embedded runner's bootstrap routing for backends that transport
   // OpenClaw's system prompt. Only a declared native-tool backend can complete
   // the file-based ritual; other backends receive limited guidance.
@@ -1187,7 +1211,7 @@ async function prepareCliRunContextWithinReadFence(
       ? undefined
       : await resolveWorkspaceBootstrapRouting({
           isWorkspaceBootstrapPending: prepareDeps.isWorkspaceBootstrapPending,
-          bootstrapFiles,
+          bootstrapFiles: resolvedBootstrap.bootstrapFiles,
           bootstrapFilesProvideAccess: false,
           bootstrapContextRunKind: params.bootstrapContextRunKind,
           trigger: params.trigger,
@@ -2137,14 +2161,6 @@ async function prepareCliRunContextWithinReadFence(
         params.currentInboundContext,
         reusableCliSession,
       );
-      const resolvedProfile = resolveAgentProfile({
-        config: params.config,
-        agentId: sessionAgentId,
-        sessionKey: params.sessionKey,
-        modelProvider,
-        modelId,
-        modelSizeClass: agentProfileModelSizeClass,
-      });
       const contextSerialization = resolveContextSerialization({
         config: params.config,
         agentId: sessionAgentId,
@@ -2204,6 +2220,10 @@ async function prepareCliRunContextWithinReadFence(
       sessionKey: params.sessionKey,
       provider: params.provider,
       model: modelId,
+      agentProfile: {
+        id: resolvedProfile.profile.id,
+        selectionSource: resolvedProfile.selectionSource,
+      },
       workspaceDir,
       bootstrapMaxChars,
       bootstrapTotalMaxChars,
@@ -2212,6 +2232,7 @@ async function prepareCliRunContextWithinReadFence(
         warningMode: bootstrapPromptWarningMode,
         warning: bootstrapPromptWarning,
       }),
+      workspaceContext: workspaceContextReport,
       sandbox: rootedExecution
         ? { mode: sandboxStatus.mode, sandboxed: Boolean(rootedExecution.sandbox) }
         : { mode: "off", sandboxed: false },

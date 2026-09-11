@@ -2494,6 +2494,59 @@ describe("prepareCliRunContext", () => {
     },
   );
 
+  it("applies the selected profile workspace budget to CLI system prompts", async () => {
+    const { dir } = fixture.session;
+    const agentsPath = path.join(dir, "AGENTS.md");
+    const soulPath = path.join(dir, "SOUL.md");
+    const identityPath = path.join(dir, "IDENTITY.md");
+    setCliRunnerPrepareTestDeps({
+      resolveBootstrapContextForRun: vi.fn(async () => ({
+        bootstrapFiles: [
+          {
+            name: "AGENTS.md" as const,
+            path: agentsPath,
+            content: "agent policy ".repeat(700),
+            missing: false,
+          },
+          {
+            name: "SOUL.md" as const,
+            path: soulPath,
+            content: "soul guidance ".repeat(400),
+            missing: false,
+          },
+          {
+            name: "IDENTITY.md" as const,
+            path: identityPath,
+            content: "Name: Bob",
+            missing: false,
+          },
+        ],
+        contextFiles: [],
+      })),
+    });
+
+    const context = await fixture.prepare({
+      sessionKey: "agent:main:test",
+      agentId: "main",
+      trigger: "user",
+      prompt: "Who are you?",
+      config: { agents: { defaults: { agentProfileId: "openclaw/small" } } },
+    });
+
+    expect(context.systemPrompt).toContain("Name: Bob");
+    expect(context.systemPromptReport.agentProfile).toEqual({
+      id: "openclaw/small",
+      selectionSource: "defaults-explicit",
+    });
+    expect(context.systemPromptReport.workspaceContext).toMatchObject({
+      totalMaxChars: 8_000,
+    });
+    expect(context.systemPromptReport.workspaceContext?.injectedChars).toBeLessThanOrEqual(8_000);
+    expect(
+      context.systemPromptReport.workspaceContext?.entries.map((entry) => entry.section),
+    ).toEqual(["agents", "soul", "identity"]);
+  });
+
   it("uses lean current-turn context from model-size profile selection", async () => {
     setCliRunnerPrepareTestDeps({
       loadManifestModelCatalog: vi.fn(() => [
