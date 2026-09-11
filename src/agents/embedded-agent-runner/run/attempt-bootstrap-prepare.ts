@@ -208,7 +208,7 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
     bootstrapMode,
     contextFiles,
     bootstrapInjectionStats,
-    workspaceContextReport,
+    ...(workspaceContextReport ? { workspaceContextReport } : {}),
     shouldRecordCompletedBootstrapTurn,
     workspaceNotes,
   };

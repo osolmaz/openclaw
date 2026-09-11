@@ -9,10 +9,6 @@ import {
   USER_BOOTSTRAP_MAX_CHARS,
 } from "../embedded-agent-helpers/bootstrap.js";
 import {
-  DEFAULT_AGENTS_FILENAME,
-  DEFAULT_IDENTITY_FILENAME,
-  DEFAULT_SOUL_FILENAME,
-  DEFAULT_USER_FILENAME,
   readDeclaredWorkspaceContextFile,
   type WorkspaceBootstrapFile,
   workspaceFilesShareSourceIdentity,
@@ -25,19 +21,19 @@ import type {
 import type { ResolvedAgentProfile } from "./resolve.js";
 
 const CANONICAL_SECTION_BY_FILE = new Map<string, WorkspaceContextCanonicalSection>([
-  [DEFAULT_AGENTS_FILENAME.toLowerCase(), "agents"],
-  [DEFAULT_SOUL_FILENAME.toLowerCase(), "soul"],
-  [DEFAULT_IDENTITY_FILENAME.toLowerCase(), "identity"],
-  [DEFAULT_USER_FILENAME.toLowerCase(), "user"],
+  ["agents.md", "agents"],
+  ["soul.md", "soul"],
+  ["identity.md", "identity"],
+  ["user.md", "user"],
 ]);
 
-export type WorkspaceContextCanonicalSection = "agents" | "soul" | "identity" | "user";
-export type WorkspaceContextTruncationCause =
+type WorkspaceContextCanonicalSection = "agents" | "soul" | "identity" | "user";
+type WorkspaceContextTruncationCause =
   | "section-limit"
   | "additional-pool-limit"
   | "aggregate-limit";
 
-export type WorkspaceContextAllocationEntry = {
+type WorkspaceContextAllocationEntry = {
   section: string;
   kind: "canonical" | "additional";
   path: string;
@@ -91,7 +87,7 @@ function effectiveFileMaxChars(params: {
   operatorMaxChars: number;
 }): number {
   const operatorMaxChars =
-    params.name.toLowerCase() === DEFAULT_USER_FILENAME.toLowerCase()
+    params.name.toLowerCase() === "user.md"
       ? Math.min(params.operatorMaxChars, USER_BOOTSTRAP_MAX_CHARS)
       : params.operatorMaxChars;
   return Math.max(1, Math.min(operatorMaxChars, params.profileMaxChars ?? operatorMaxChars));

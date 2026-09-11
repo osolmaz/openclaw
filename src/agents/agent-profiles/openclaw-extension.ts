@@ -107,9 +107,7 @@ const openClawAgentProfileExtensionSchema = z
 
 export type WorkspaceContextOverflow = (typeof WORKSPACE_CONTEXT_OVERFLOW_MODES)[number];
 export type OpenClawWorkspaceContextSection = z.infer<typeof workspaceContextSectionSchema>;
-export type OpenClawAdditionalWorkspaceContextFile = z.infer<
-  typeof additionalWorkspaceContextFileSchema
->;
+type OpenClawAdditionalWorkspaceContextFile = z.infer<typeof additionalWorkspaceContextFileSchema>;
 export type OpenClawWorkspaceContext = z.infer<typeof workspaceContextSchema>;
 
 export type OpenClawAgentProfileExtension = {

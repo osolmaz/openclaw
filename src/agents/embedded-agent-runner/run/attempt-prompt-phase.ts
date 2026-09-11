@@ -193,7 +193,7 @@ export async function runEmbeddedAttemptPromptPhase(
       ...(preparedUserTurnMessage ? { preparedUserTurnMessage } : {}),
       sessionAgentId,
       setActiveSessionSystemPrompt,
-      contextSerialization: prepared.toolBase.contextSerialization,
+      contextSerialization: prepared.toolBase?.contextSerialization,
       ...(systemPromptReport ? { systemPromptReport } : {}),
       systemPromptText,
       toolResultPromptProjectionState,
