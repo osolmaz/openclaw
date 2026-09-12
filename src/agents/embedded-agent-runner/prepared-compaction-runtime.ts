@@ -25,11 +25,7 @@ import { createOpenClawCodingTools } from "../agent-tools.js";
 import { createSkillInstructionDeliveryCache } from "../agent-tools.read.js";
 import { listActiveProcessSessionReferences } from "../bash-process-references.js";
 import { resolveProcessToolScopeKey } from "../bash-process-scope.js";
-import {
-  makeBootstrapWarn,
-  resolveBootstrapContextForRun,
-  resolveContextInjectionMode,
-} from "../bootstrap-files.js";
+import { makeBootstrapWarn, resolveContextInjectionMode } from "../bootstrap-files.js";
 import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
@@ -65,6 +61,7 @@ import {
 import { logRuntimeToolSchemaQuarantine } from "../tool-schema-quarantine.js";
 import { prepareWatchedSessionsPrompt } from "../watched-sessions-prompt.js";
 import { resolveCompactionContextTokenBudget } from "./compaction-runtime-context.js";
+import { resolveCompactionContextFiles } from "./compaction-workspace-context.js";
 import type { DirectCompactionPreparation } from "./direct-compaction-preparation.js";
 import { applyFinalEffectiveToolPolicy } from "./effective-tool-policy.js";
 import { log } from "./logger.js";
@@ -165,20 +162,24 @@ export async function buildPreparedCompactionRuntime(
     const sessionLabel = params.sessionKey ?? params.sessionId;
     const resolvedMessageProvider = params.messageChannel ?? params.messageProvider;
     const contextInjectionMode = resolveContextInjectionMode(params.config, sessionAgentId);
-    const { contextFiles } =
+    const bootstrapWarn = makeBootstrapWarn({
+      sessionLabel,
+      warn: (message) => log.warn(message),
+    });
+    const contextFiles =
       contextInjectionMode === "never"
-        ? { contextFiles: [] }
-        : await resolveBootstrapContextForRun({
-            workspaceDir: effectiveWorkspace,
+        ? []
+        : await resolveCompactionContextFiles({
             config: params.config,
+            agentId: sessionAgentId,
             sessionKey: params.sessionKey,
             sessionId: params.sessionId,
             chatType: params.chatType,
-            agentId: sessionAgentId,
-            warn: makeBootstrapWarn({
-              sessionLabel,
-              warn: (message) => log.warn(message),
-            }),
+            workspaceDir: effectiveWorkspace,
+            provider,
+            modelId,
+            modelSizeClass: runtimeModel.modelSizeClass,
+            warn: bootstrapWarn,
           });
     // Apply contextTokens cap to model so session runtime's auto-compaction
     // threshold uses the effective limit, not the native context window.

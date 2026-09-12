@@ -620,13 +620,13 @@ describe("agent exec command composition", () => {
       try {
         const result = await agentExecCommand(
           "inspect",
-          { codeMode: mode, model: "test/model-a", localModelLean: true },
+          { codeMode: mode, model: "test/model-a", agentProfile: "openclaw/small" },
           runtime,
           {
             runAgent: vi.fn(async (invocation) => {
               const config = expectDefined(getRuntimeConfigSnapshot(), "isolated run config");
               expect(config.tools?.codeMode).toEqual(codeMode);
-              expect(config.agents?.defaults?.experimental?.localModelLean).toBe(true);
+              expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
               const surface = createAgentHarnessToolSurfaceRuntimeCore({
                 config,
                 agentId: "main",
@@ -1023,15 +1023,15 @@ describe("agent exec run config layering", () => {
     expect(runtime?.type === "acp" ? runtime.acp?.agent : undefined).toBe("codex");
   });
 
-  it("keeps Code Mode limits while enabling the lean local-model flag", () => {
+  it("keeps Code Mode limits while selecting the small Agent Profile", () => {
     const config = buildExecRunConfig({
       base: { tools: { codeMode: { enabled: true, maxOutputBytes: 4096 } } },
       cwd: "/run/here",
-      opts: { localModelLean: true },
+      opts: { agentProfile: "openclaw/small" },
     });
 
     expect(config.tools?.codeMode).toEqual({ enabled: true, maxOutputBytes: 4096 });
-    expect(config.agents?.defaults?.experimental?.localModelLean).toBe(true);
+    expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
   });
 });
 

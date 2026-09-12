@@ -173,16 +173,14 @@ describe("Agent-specific tool filtering", () => {
     expect(toolNames).toContain("apply_patch");
   });
 
-  it("uses the configured default agent for lean local-model filtering on legacy session keys", () => {
+  it("uses the configured default agent profile on legacy session keys", () => {
     const cfg: OpenClawConfig = {
       agents: {
         list: [
           {
             id: "local",
             default: true,
-            experimental: {
-              localModelLean: true,
-            },
+            agentProfileId: "openclaw/small",
           },
         ],
       },

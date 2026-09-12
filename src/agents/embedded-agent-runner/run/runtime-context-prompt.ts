@@ -3,6 +3,11 @@
  */
 import type { Context, UserMessage } from "../../../llm/types.js";
 import {
+  selectCurrentInboundContext,
+  serializeRuntimeContext,
+} from "../../context-serialization/project.js";
+import type { ResolvedContextSerialization } from "../../context-serialization/resolve.js";
+import {
   INTERNAL_RUNTIME_CONTEXT_BEGIN,
   INTERNAL_RUNTIME_CONTEXT_END,
   OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE,
@@ -38,8 +43,12 @@ export function appendCurrentInboundContext(
   return {
     ...context,
     text: append(context?.text),
+    ...(context?.leanText !== undefined ? { leanText: append(context.leanText) } : {}),
     ...(context?.resumableText !== undefined
       ? { resumableText: append(context.resumableText) }
+      : {}),
+    ...(context?.leanResumableText !== undefined
+      ? { leanResumableText: append(context.leanResumableText) }
       : {}),
     fragments: [
       ...(context?.fragments ??
@@ -54,12 +63,14 @@ export function buildCurrentInboundPrompt(params: {
   context: CurrentInboundPromptContext | undefined;
   prompt: string;
   preferResumableText?: boolean;
+  serialization?: ResolvedContextSerialization;
 }): string {
-  const contextText =
-    params.preferResumableText === true
-      ? (params.context?.resumableText ?? params.context?.text)
-      : params.context?.text;
-  const prefix = contextText?.trim() ?? "";
+  const selected = selectCurrentInboundContext({
+    context: params.context,
+    serialization: params.serialization ?? { mode: "default", source: "fallback" },
+    preferResumableText: params.preferResumableText,
+  });
+  const prefix = selected.text.trim();
   return [prefix, params.prompt].filter(Boolean).join(params.context?.promptJoiner ?? "\n\n");
 }
 
@@ -111,6 +122,7 @@ export function buildRuntimeContextMessageContent(params: {
 export function buildRuntimeContextCustomMessage(
   runtimeContext: string | undefined,
   fragments?: RuntimeContextFragment[],
+  mode: ResolvedContextSerialization["mode"] = "default",
 ): RuntimeContextCustomMessage | undefined {
   const trimmedRuntimeContext = runtimeContext?.trim();
   if (!trimmedRuntimeContext) {
@@ -119,9 +131,10 @@ export function buildRuntimeContextCustomMessage(
   return {
     role: "custom",
     customType: OPENCLAW_RUNTIME_CONTEXT_CUSTOM_TYPE,
-    content: buildRuntimeContextMessageContent({
+    content: serializeRuntimeContext({
       runtimeContext: trimmedRuntimeContext,
       kind: "next-turn",
+      mode,
     }),
     display: false,
     details: {

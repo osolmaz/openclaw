@@ -83,7 +83,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
   const {
     codeModeControlsEnabledForRun,
     computerContextEpoch,
-    localModelLeanEnabled,
+    agentProfile,
     replaySafetyOptions,
     toolSearchCatalogRef,
     toolSearchRuntimeConfig,
@@ -246,7 +246,7 @@ export async function prepareEmbeddedAttemptSessionRuntime(input: {
     clientToolCount: preparedAgentSession.clientToolDefs.length,
     effectiveToolCount,
     effectiveWorkspace,
-    localModelLeanEnabled,
+    agentProfile,
     sessionAgentId,
     ...(systemPromptReport ? { systemPromptReport } : {}),
   });

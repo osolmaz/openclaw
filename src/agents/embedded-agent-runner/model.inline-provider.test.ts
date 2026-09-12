@@ -46,6 +46,17 @@ describe("buildInlineProviderModels", () => {
     ]);
   });
 
+  it("preserves trusted model-size metadata", () => {
+    const result = buildInlineProviderModels({
+      custom: {
+        baseUrl: "http://custom.local",
+        models: [{ ...makeModel("small-model"), modelSizeClass: "small" }],
+      },
+    });
+
+    expect(result[0]?.modelSizeClass).toBe("small");
+  });
+
   it("preserves authored context windows and leaves omitted windows absent", () => {
     const { contextWindow: _contextWindow, ...transportOnly } = makeModel("transport-only");
     const result = buildInlineProviderModels({

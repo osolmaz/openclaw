@@ -150,6 +150,7 @@ interface CopilotToolBridgeInput {
 interface CopilotToolBridge {
   cleanup?: () => void;
   codeModeEngaged?: boolean;
+  agentProfileSystemPrompt?: string;
   promptToolPolicy: {
     requireExplicitMessageTarget?: boolean;
     apply: (params?: { toolsAllow?: string[]; forceToolNames?: readonly string[] }) => {
@@ -185,14 +186,6 @@ export async function createCopilotToolBridge(
       forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
     }).runtimeToolAllowlist,
   });
-  if (!toolPlan.constructTools) {
-    return { codeModeEngaged: false, promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY, sourceTools: [] };
-  }
-
-  const createOpenClawCodingTools =
-    input.createOpenClawCodingTools ??
-    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
-
   const toolSurfaceRuntime = createAgentHarnessToolSurfaceRuntime({
     abortSignal: input.abortSignal,
     agentId: attemptParams.sandboxAgentId ?? input.agentId,
@@ -209,7 +202,7 @@ export async function createCopilotToolBridge(
     contextTokenBudget: attemptParams.contextTokenBudget,
     modelId: input.modelId,
     modelProvider: input.modelProvider,
-    modelToolsEnabled: true,
+    modelToolsEnabled: toolPlan.constructTools,
     prompt: attemptParams.prompt,
     runId: attemptParams.runId,
     runtimeToolAllowlist: toolPlan.runtimeToolAllowlist,
@@ -219,6 +212,24 @@ export async function createCopilotToolBridge(
     sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
     toolsAllow: attemptParams.toolsAllow,
   });
+  if (!toolPlan.constructTools) {
+    return {
+      cleanup: toolSurfaceRuntime.cleanup,
+      codeModeEngaged: false,
+      agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+        sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+        toolNames: [],
+        runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+      }),
+      promptToolPolicy: EMPTY_PROMPT_TOOL_POLICY,
+      sourceTools: [],
+    };
+  }
+
+  const createOpenClawCodingTools =
+    input.createOpenClawCodingTools ??
+    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
+
   const toolOptions = buildOpenClawCodingToolsOptions(
     input,
     {
@@ -264,7 +275,7 @@ export async function createCopilotToolBridge(
     { preserveToolNames: toolSurfaceRuntime.runtimeToolAllowlist },
   );
   const compactedTools = toolSurfaceRuntime.compactTools(plannedSourceTools, {
-    localModelLeanApplied: true,
+    agentProfileApplied: true,
   });
   // The constructor output is bound before catalog compaction so hidden tools
   // cannot outlive the attempt. Bind only controls created by compaction here;
@@ -319,6 +330,11 @@ export async function createCopilotToolBridge(
     // got code-mode controls. Without it the run reports `codeModeEngaged`
     // as unset and telemetry cannot tell "off" from "harness did not report".
     codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+    agentProfileSystemPrompt: toolSurfaceRuntime.buildAgentProfileSystemPrompt({
+      sourceReplyDeliveryMode: attemptParams.sourceReplyDeliveryMode,
+      toolNames: exposedTools.map((tool) => tool.name),
+      runtimeSystemPrompt: attemptParams.extraSystemPrompt,
+    }),
     promptToolPolicy: {
       requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
       apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
@@ -420,6 +436,7 @@ function buildOpenClawCodingToolsOptions(
     abortSignal: input.abortSignal,
     modelProvider: input.modelProvider,
     modelId: input.modelId,
+    resolvedAgentProfile: toolSurfaceRuntime?.agentProfile,
     includeCoreTools: toolPlan.includeCoreTools,
     includeToolSearchControls: toolSurfaceRuntime?.includeToolSearchControls,
     toolSearchCatalogRef: toolSurfaceRuntime?.toolSearchCatalogRef,

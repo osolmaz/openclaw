@@ -59,7 +59,7 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
         },
       };
       const config: OpenClawConfig = {
-        agents: { defaults: { experimental: { localModelLean: false } } },
+        agents: { defaults: { agentProfileId: "openclaw/base" } },
       };
       const runtime = createAgentHarnessToolSurfaceRuntime({
         config,
@@ -206,7 +206,7 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
 
   it("filters raw SDK tools but does not refilter prepared constructor output", () => {
     const config: OpenClawConfig = {
-      agents: { defaults: { experimental: { localModelLean: true } } },
+      agents: { defaults: { agentProfileId: "openclaw/small" } },
       tools: { alsoAllow: ["image_generate"], toolSearch: { enabled: false } },
     };
     const runtime = createRuntime(config);
@@ -218,7 +218,7 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
     ).toEqual(["read", "image_generate"]);
     expect(
       runtime
-        .compactTools(tools(["read", "browser"]), { localModelLeanApplied: true })
+        .compactTools(tools(["read", "browser"]), { agentProfileApplied: true })
         .tools.map((tool) => tool.name),
     ).toEqual(["read", "browser"]);
     runtime.cleanup();
@@ -226,7 +226,7 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
 
   it("keeps exec direct in lean structured Tool Search mode", () => {
     const config: OpenClawConfig = {
-      agents: { defaults: { experimental: { localModelLean: true } } },
+      agents: { defaults: { agentProfileId: "openclaw/small" } },
     };
     const runtime = createRuntime(config);
 
@@ -474,7 +474,7 @@ describe("createAgentHarnessToolSurfaceRuntime", () => {
     testing.setToolSearchCodeModeSupportedForTest(true);
     try {
       const config: OpenClawConfig = {
-        agents: { defaults: { experimental: { localModelLean: true } } },
+        agents: { defaults: { agentProfileId: "openclaw/small" } },
         tools: { toolSearch: { mode: "code" } },
       };
       const runtime = createRuntime(config);

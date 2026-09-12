@@ -22,6 +22,9 @@ export const MODEL_APIS = [...MODEL_DATA_APIS] as const;
 
 export type ModelApi = (typeof MODEL_APIS)[number];
 
+export const MODEL_SIZE_CLASSES = ["tiny", "small", "medium", "large"] as const;
+export type ModelSizeClass = (typeof MODEL_SIZE_CLASSES)[number];
+
 type SupportedOpenAICompatFields = Pick<
   OpenAICompletionsCompat,
   | "supportsStore"
@@ -164,6 +167,8 @@ export type ModelDefinitionConfig = {
   compat?: ModelCompatConfig;
   /** Media input limits used by routing and preflight compression. */
   mediaInput?: ModelMediaInputConfig;
+  /** Trusted total-parameter size class used for Agent Profile selection. */
+  modelSizeClass?: ModelSizeClass;
   /** Metadata source marker for models added by CLI/catalog tooling. */
   metadataSource?: "models-add";
 };

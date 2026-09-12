@@ -881,6 +881,25 @@ describe("createCopilotToolBridge", () => {
       });
     });
 
+    it("forwards the profile selected from trusted model-size metadata", async () => {
+      const { createOpenClawCodingTools, getOpts } = captureCall();
+
+      await createCopilotToolBridge({
+        attemptParams: {
+          config: {},
+          model: { modelSizeClass: "small" },
+        } as never,
+        createOpenClawCodingTools,
+        modelId: "unbound-model",
+        modelProvider: "github-copilot",
+      });
+
+      expect(getOpts().resolvedAgentProfile).toMatchObject({
+        profile: { id: "openclaw/small" },
+        selectionSource: "model-size",
+      });
+    });
+
     it("falls back messageProvider to attemptParams.messageChannel when messageProvider is absent (codex parity)", async () => {
       const { createOpenClawCodingTools, getOpts } = captureCall();
 
@@ -1762,11 +1781,11 @@ describe("createCopilotToolBridge", () => {
       expect(result.sourceTools.map((tool) => tool.name).toSorted()).toEqual(["edit", "read"]);
     });
 
-    it("does not discard lean-mode overrides after tool construction", async () => {
+    it("keeps small-profile prompt and tool overrides on the same selection", async () => {
       const result = await createCopilotToolBridge({
         attemptParams: {
           config: {
-            agents: { defaults: { experimental: { localModelLean: true } } },
+            agents: { defaults: { agentProfileId: "openclaw/small" } },
             tools: { alsoAllow: ["image_generate"] },
           },
         } as never,
@@ -1774,6 +1793,9 @@ describe("createCopilotToolBridge", () => {
       });
 
       expect(result.sourceTools.map((tool) => tool.name)).toEqual(["image_generate"]);
+      expect(result.agentProfileSystemPrompt).toContain(
+        "You are a personal assistant running inside OpenClaw.",
+      );
     });
 
     it("keeps plugin tools for plugin group allowlists", async () => {

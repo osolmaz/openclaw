@@ -2,6 +2,7 @@ import { createReadStream, existsSync } from "node:fs";
 import path from "node:path";
 import { TextDecoder } from "node:util";
 import { readByteStreamWithLimit } from "@openclaw/media-core/read-byte-stream-with-limit";
+import { isAgentProfileSelector, type AgentProfileSelector } from "../config/agent-profile-ids.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { mergeDeep } from "../infra/deep-merge.js";
 
@@ -18,7 +19,7 @@ export type AgentExecCliOptions = {
   thinking?: string;
   fallback?: string[];
   codeMode?: "direct" | "auto" | "code";
-  localModelLean?: boolean;
+  agentProfile?: string;
   authEnvOnly?: boolean;
   timeout?: string;
   json?: boolean;
@@ -120,30 +121,59 @@ function stripInheritedAgentLocations(base: OpenClawConfig): OpenClawConfig {
   };
 }
 
+function normalizeAgentProfile(value: string | undefined): AgentProfileSelector | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (isAgentProfileSelector(value)) {
+    return value;
+  }
+  throw new Error(
+    "--agent-profile must be auto, openclaw/base, openclaw/small, openclaw/medium, or openclaw/large.",
+  );
+}
+
 function buildExecRunOverlay(params: {
   base: OpenClawConfig;
   cwd: string;
-  opts: Pick<AgentExecCliOptions, "localModelLean">;
+  opts: Pick<AgentExecCliOptions, "agentProfile">;
 }): OpenClawConfig {
+  const agentProfileId = normalizeAgentProfile(params.opts.agentProfile);
   // A per-agent `workspace` outranks `agents.defaults`, so pinning only the
   // defaults would let an inherited entry silently run the turn against a
   // different repository. Override every configured entry as well.
   const entries = Object.keys(params.base.agents?.entries ?? {});
-  return {
+  const listedAgentOverlays = (params.base.agents?.list ?? []).map((entry) =>
+    Object.assign({}, entry, { workspace: params.cwd }, agentProfileId ? { agentProfileId } : {}),
+  );
+  const overlay = {
     agents: {
       defaults: {
         workspace: params.cwd,
         skipBootstrap: true,
-        ...(params.opts.localModelLean ? { experimental: { localModelLean: true } } : {}),
+        ...(agentProfileId ? { agentProfileId } : {}),
       },
       ...(entries.length > 0
-        ? { entries: Object.fromEntries(entries.map((id) => [id, { workspace: params.cwd }])) }
+        ? {
+            entries: Object.fromEntries(
+              entries.map((id) => [
+                id,
+                {
+                  workspace: params.cwd,
+                  ...(agentProfileId ? { agentProfileId } : {}),
+                },
+              ]),
+            ),
+          }
         : {}),
+      ...(listedAgentOverlays.length > 0 ? { list: listedAgentOverlays } : {}),
     },
     // This process exits after one turn, so live skill invalidation cannot be
     // observed and would leave Chokidar retaining the otherwise-finished CLI.
     skills: { load: { watch: false } },
   };
+  // SAFETY: every overlay field is a validated OpenClaw config field.
+  return overlay as OpenClawConfig;
 }
 
 /**
@@ -219,12 +249,14 @@ export async function resolveExecBaseConfig(
 export function buildExecRunConfig(params: {
   base: OpenClawConfig;
   cwd: string;
-  opts?: Pick<AgentExecCliOptions, "localModelLean">;
+  opts?: Pick<AgentExecCliOptions, "agentProfile">;
 }): OpenClawConfig {
   const opts = params.opts ?? {};
   const base = stripInheritedAgentLocations(params.base);
-  return mergeDeep(
-    mergeDeep(buildExecConfigDefaults(), base),
-    buildExecRunOverlay({ base, cwd: params.cwd, opts }),
-  ) as OpenClawConfig; // SAFETY: Merging three typed configs preserves the OpenClawConfig shape.
+  const mergedDefaults = mergeDeep(buildExecConfigDefaults(), base);
+  // SAFETY: both merge inputs conform to OpenClawConfig.
+  const withDefaults = mergedDefaults as OpenClawConfig;
+  const merged = mergeDeep(withDefaults, buildExecRunOverlay({ base, cwd: params.cwd, opts }));
+  // SAFETY: the base config and invocation overlay conform to OpenClawConfig.
+  return merged as OpenClawConfig;
 }

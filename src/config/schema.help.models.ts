@@ -163,10 +163,8 @@ export const MODEL_FIELD_HELP: Record<string, string> = {
     "Max characters of each workspace bootstrap file injected into the system prompt before truncation (default: 20000).",
   "agents.defaults.bootstrapTotalMaxChars":
     "Max total characters across all injected workspace bootstrap files (default: 60000).",
-  "agents.defaults.experimental":
-    "Experimental agent-default flags. Keep these off unless you are intentionally testing a preview surface.",
-  "agents.defaults.experimental.localModelLean":
-    "Explicitly restrict optional tools such as browser, automations, and message. Off by default; supported local runtimes use automatic Tool Search without this restriction. Explicit tool allows and required delivery tools are preserved.",
+  "agents.defaults.agentProfileId":
+    'Agent Profile selector: "auto" (default) uses deterministic model bindings, while a registered profile id such as "openclaw/small" is an explicit override.',
   "agents.defaults.startupContext":
     'Runtime-owned first-turn prelude for bare "/new" and "/reset". Use this to control whether recent daily memory files are preloaded into the first prompt instead of asking the model to decide what to read.',
   "agents.defaults.startupContext.enabled":

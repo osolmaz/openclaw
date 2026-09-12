@@ -5,6 +5,7 @@ import {
   transformProviderSystemPrompt,
 } from "../../../plugins/provider-runtime.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
+import { buildAgentProfileSystemPrompt, type ResolvedAgentProfile } from "../../agent-profiles.js";
 import {
   buildBootstrapPromptWarningNotice,
   buildBootstrapTruncationReportMeta,
@@ -41,6 +42,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   setup: EmbeddedAttemptSetup;
   bootstrap: PreparedBootstrap;
   capabilityToolNames: Set<string>;
+  agentProfile: ResolvedAgentProfile;
   requireExplicitMessageTarget?: boolean;
   effectiveTools: PromptTools;
   isRawModelRun: boolean;
@@ -218,8 +220,15 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       .filter((value): value is string => Boolean(value))
       .join("\n\n") || undefined;
 
+  const profileSystemPrompt = buildAgentProfileSystemPrompt({
+    resolvedProfile: params.agentProfile,
+    sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
+    toolNames: params.effectiveTools.map((tool) => tool.name),
+    runtimeSystemPrompt: extraSystemPrompt,
+  });
   const promptInputs: Parameters<typeof buildAttemptSystemPrompt>[0] = {
     isRawModelRun: params.isRawModelRun,
+    baseSystemPromptOverride: profileSystemPrompt,
     transformProviderSystemPrompt: (transformParams) =>
       transformProviderSystemPrompt({
         ...transformParams,
@@ -300,6 +309,10 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
     sessionKey: attempt.sessionKey,
     provider: attempt.provider,
     model: attempt.modelId,
+    agentProfile: {
+      id: params.agentProfile.profile.id,
+      selectionSource: params.agentProfile.selectionSource,
+    },
     workspaceDir: params.setup.effectiveWorkspace,
     bootstrapMaxChars: params.bootstrap.bootstrapMaxChars,
     bootstrapTotalMaxChars: params.bootstrap.bootstrapTotalMaxChars,
@@ -308,6 +321,7 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
       warningMode: params.bootstrap.bootstrapPromptWarningMode,
       warning: params.bootstrap.bootstrapPromptWarning,
     }),
+    workspaceContext: params.bootstrap.workspaceContextReport,
     sandbox: (() => {
       const runtime = resolveSandboxRuntimeStatus({
         cfg: attempt.config,

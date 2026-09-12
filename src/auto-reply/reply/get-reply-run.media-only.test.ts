@@ -28,6 +28,7 @@ import { finalizeInboundContext, finalizeInboundContextForSdk } from "./inbound-
 import {
   buildInboundMetaSystemPrompt,
   buildInboundUserContextPrefix,
+  buildLeanInboundUserContextPrefix,
   resolveInboundUserContextPromptJoiner,
 } from "./inbound-meta.js";
 import { prepareReplyConversation } from "./prompt-session-context.js";
@@ -275,6 +276,11 @@ vi.mock("./groups.js", () => ({
 vi.mock("./inbound-meta.js", () => ({
   buildInboundMetaSystemPrompt: vi.fn().mockReturnValue(""),
   buildInboundUserContextPrefix: vi.fn().mockReturnValue(""),
+  buildLeanInboundUserContextPrefix: vi.fn().mockReturnValue({
+    text: "",
+    removedSessionMessages: 0,
+    deduplicatedMessages: 0,
+  }),
   formatActiveGoalContext: vi.fn().mockReturnValue(undefined),
   resolveInboundUserContextPromptJoiner: vi.fn().mockReturnValue(undefined),
 }));
@@ -620,6 +626,11 @@ describe("runPreparedReply media-only handling", () => {
     vi.mocked(buildGroupIntro).mockReturnValue("");
     vi.mocked(buildGroupChatContext).mockReturnValue("");
     vi.mocked(buildInboundUserContextPrefix).mockReset().mockReturnValue("");
+    vi.mocked(buildLeanInboundUserContextPrefix).mockReset().mockReturnValue({
+      text: "",
+      removedSessionMessages: 0,
+      deduplicatedMessages: 0,
+    });
     vi.mocked(resolveInboundUserContextPromptJoiner).mockReturnValue(undefined);
     vi.mocked(hasControlCommand).mockReturnValue(false);
     resolveCurrentTurnImagesMock.mockReset().mockResolvedValue({});
@@ -630,6 +641,26 @@ describe("runPreparedReply media-only handling", () => {
     vi.useRealTimers();
     resetSystemEventsForTest();
     expect(preparedReplyMockState.unexpectedCalls).toEqual([]);
+  });
+
+  it("preserves lean inbound context through reply admission", async () => {
+    vi.mocked(buildInboundUserContextPrefix).mockReturnValue("default context");
+    vi.mocked(buildLeanInboundUserContextPrefix).mockReturnValue({
+      text: "lean context",
+      removedSessionMessages: 2,
+      deduplicatedMessages: 1,
+    });
+
+    await runPrepared();
+
+    expect(requireRunReplyAgentCall().followupRun.currentInboundContext).toMatchObject({
+      text: "default context\n\n[Thread history - for context]\nEarlier message in this thread",
+      leanText: "lean context\n\n[Thread history - for context]\nEarlier message in this thread",
+      serializationStats: {
+        removedSessionMessages: 2,
+        deduplicatedMessages: 1,
+      },
+    });
   });
 
   it("passes approved elevated defaults to the runner", async () => {

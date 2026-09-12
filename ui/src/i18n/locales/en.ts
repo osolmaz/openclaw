@@ -3310,11 +3310,6 @@ export const en: TranslationMap & {
       description:
         "Enable rolling-history guards that warn or block repeated tool calls when an agent stops making progress.",
     },
-    localModelLean: {
-      title: "Lean tools for local models",
-      description:
-        "Remove optional tools such as browser and automations. Leave this off to keep those capabilities available through Tool Search.",
-    },
     cliAgents: {
       title: "CLI agents",
       description:

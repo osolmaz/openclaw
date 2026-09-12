@@ -240,48 +240,48 @@ describe("applyNonInteractivePluginProviderChoice", () => {
   it.each([
     { providerId: "lmstudio", modelRef: "lmstudio/qwen/qwen3-1.7b" },
     { providerId: "ollama", modelRef: "ollama/qwen3:8b" },
-  ])("does not persist lean defaults for verified $providerId onboarding", async (params) => {
+  ])("does not persist an Agent Profile for verified $providerId onboarding", async (params) => {
     const result = await applyProviderModelChoice(params);
 
     expect(result?.agents?.defaults?.model).toEqual({ primary: params.modelRef });
-    expect(result?.agents?.defaults?.experimental?.localModelLean).toBeUndefined();
+    expect(result?.agents?.defaults?.agentProfileId).toBeUndefined();
     expect(result?.wizard).toBeUndefined();
   });
 
   it.each([
     { providerId: "lmstudio", modelRef: "lmstudio/qwen/qwen3-1.7b" },
     { providerId: "ollama", modelRef: "ollama/qwen3:8b" },
-  ])("preserves explicit lean-tool opt-out for verified $providerId onboarding", async (params) => {
+  ])("preserves an explicit base profile for verified $providerId onboarding", async (params) => {
     const result = await applyProviderModelChoice({
       ...params,
       nextConfig: {
         agents: {
           defaults: {
-            experimental: { localModelLean: false },
+            agentProfileId: "openclaw/base",
           },
         },
       },
     });
 
     expect(result?.agents?.defaults?.model).toEqual({ primary: params.modelRef });
-    expect(result?.agents?.defaults?.experimental?.localModelLean).toBe(false);
+    expect(result?.agents?.defaults?.agentProfileId).toBe("openclaw/base");
     expect(result?.wizard).toBeUndefined();
   });
 
-  it("preserves explicitly enabled lean tools for verified hosted providers", async () => {
+  it("preserves an explicit small profile for verified hosted providers", async () => {
     const result = await applyProviderModelChoice({
       providerId: "openai",
       modelRef: "openai/gpt-5.6-luna",
       nextConfig: {
         agents: {
           defaults: {
-            experimental: { localModelLean: true },
+            agentProfileId: "openclaw/small",
           },
         },
       },
     });
 
-    expect(result?.agents?.defaults?.experimental?.localModelLean).toBe(true);
+    expect(result?.agents?.defaults?.agentProfileId).toBe("openclaw/small");
     expect(result?.wizard).toBeUndefined();
   });
 
@@ -861,32 +861,32 @@ describe("applyNonInteractivePluginProviderChoice", () => {
   });
 
   it.each(["ollama/kimi-k2.5:cloud", "ollama/gpt-oss:120b-cloud"])(
-    "does not enable local-model lean when Ollama selects hosted model %s",
+    "does not select an Agent Profile when Ollama selects hosted model %s",
     async (modelRef) => {
       const result = await applyProviderModelChoice({ providerId: "ollama", modelRef });
 
       expect(result?.agents?.defaults?.model).toEqual({ primary: modelRef });
-      expect(result?.agents?.defaults?.experimental?.localModelLean).toBeUndefined();
+      expect(result?.agents?.defaults?.agentProfileId).toBeUndefined();
       expect(result?.wizard).toBeUndefined();
     },
   );
 
-  it.each([false, true])(
-    "preserves explicit local-model lean=%s when Ollama selects a hosted model",
-    async (localModelLean) => {
+  it.each(["openclaw/base", "openclaw/small"] as const)(
+    "preserves explicit Agent Profile %s when Ollama selects a hosted model",
+    async (agentProfileId) => {
       const result = await applyProviderModelChoice({
         providerId: "ollama",
         modelRef: "ollama/kimi-k2.5:cloud",
         nextConfig: {
           agents: {
             defaults: {
-              experimental: { localModelLean },
+              agentProfileId,
             },
           },
         },
       });
 
-      expect(result?.agents?.defaults?.experimental?.localModelLean).toBe(localModelLean);
+      expect(result?.agents?.defaults?.agentProfileId).toBe(agentProfileId);
       expect(result?.wizard).toBeUndefined();
     },
   );

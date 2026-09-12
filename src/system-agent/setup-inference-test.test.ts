@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveAgentProfile } from "../agents/agent-profiles.js";
 import { resolveAgentWorkspaceDir } from "../agents/agent-scope-config.js";
 import { prepareEmbeddedAttemptBootstrap } from "../agents/embedded-agent-runner/run/attempt-bootstrap-prepare.js";
 import { createAttemptSetupFixture } from "../agents/embedded-agent-runner/run/attempt-setup.test-support.js";
@@ -115,7 +116,7 @@ describe("managed local model setup verification", () => {
           model: selectedPlan.modelRef,
           params: { temperature: 0.2 },
           tools: { profile: "coding" },
-          experimental: { localModelLean: false },
+          agentProfileId: "openclaw/base",
         },
       },
     };
@@ -157,6 +158,7 @@ describe("managed local model setup verification", () => {
           resolvedWorkspace: workspace,
           sessionAgentId: input.agentId!,
         }),
+        agentProfile: resolveAgentProfile({ config: input.config, agentId: input.agentId }),
         hasReadTool: true,
         isRawModelRun: false,
       });

@@ -1,7 +1,7 @@
 // Regression tests: provider auth failures re-prompt instead of killing the wizard.
 import { Type } from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { filterLocalModelLeanTools, isLocalModelLeanEnabled } from "../agents/local-model-lean.js";
+import { filterToolsByAgentProfile, resolveAgentProfile } from "../agents/agent-profiles.js";
 import {
   applyLocalSetupWorkspaceConfig,
   applySkipBootstrapConfig,
@@ -346,14 +346,14 @@ describe("runSetupModelAuthStep", () => {
         execute: async () => ({ content: [], details: {} }),
       }));
       expect({
-        targetLean: isLocalModelLeanEnabled({ config: result.config, agentId: "ops" }),
-        siblingLean: isLocalModelLeanEnabled({ config: result.config, agentId: "main" }),
-        targetTools: filterLocalModelLeanTools({
+        targetProfile: resolveAgentProfile({ config: result.config, agentId: "ops" }).profile.id,
+        siblingProfile: resolveAgentProfile({ config: result.config, agentId: "main" }).profile.id,
+        targetTools: filterToolsByAgentProfile({
           tools,
           config: result.config,
           agentId: "ops",
         }).map((tool) => tool.name),
-        siblingTools: filterLocalModelLeanTools({
+        siblingTools: filterToolsByAgentProfile({
           tools,
           config: result.config,
           agentId: "main",
@@ -361,8 +361,8 @@ describe("runSetupModelAuthStep", () => {
         defaults: result.config.agents?.defaults,
         sibling: result.config.agents?.entries?.main,
       }).toEqual({
-        targetLean: false,
-        siblingLean: false,
+        targetProfile: "openclaw/base",
+        siblingProfile: "openclaw/base",
         targetTools: ["read", "browser"],
         siblingTools: ["read", "browser"],
         defaults: config.agents?.defaults,
@@ -480,19 +480,19 @@ describe("runSetupModelAuthStep", () => {
   });
 
   it.each([
-    { selectedModel: "managed-local/selected", explicitLean: undefined },
-    { selectedModel: "openai/selected", explicitLean: undefined },
-    { selectedModel: "openai/selected", explicitLean: true },
-    { selectedModel: "managed-local/selected", explicitLean: false },
+    { selectedModel: "managed-local/selected", explicitProfile: undefined },
+    { selectedModel: "openai/selected", explicitProfile: undefined },
+    { selectedModel: "openai/selected", explicitProfile: "openclaw/small" as const },
+    { selectedModel: "managed-local/selected", explicitProfile: "openclaw/base" as const },
   ])(
-    "preserves explicit lean=$explicitLean when selecting $selectedModel",
-    async ({ selectedModel, explicitLean }) => {
+    "preserves explicit profile=$explicitProfile when selecting $selectedModel",
+    async ({ selectedModel, explicitProfile }) => {
       const previousModel = "managed-local/previous";
       const config: OpenClawConfig =
-        explicitLean !== undefined
+        explicitProfile !== undefined
           ? {
               agents: {
-                defaults: { model: previousModel, experimental: { localModelLean: explicitLean } },
+                defaults: { model: previousModel, agentProfileId: explicitProfile },
               },
             }
           : {};
@@ -524,10 +524,10 @@ describe("runSetupModelAuthStep", () => {
         runtime: createRuntime(),
       });
 
-      expect(result.config.agents?.defaults?.experimental?.localModelLean).toBe(explicitLean);
+      expect(result.config.agents?.defaults?.agentProfileId).toBe(explicitProfile);
       expect(result.config.wizard).toBeUndefined();
       expect(config.agents?.defaults?.model).toBe(
-        explicitLean !== undefined ? previousModel : undefined,
+        explicitProfile !== undefined ? previousModel : undefined,
       );
     },
   );

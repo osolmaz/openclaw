@@ -29,8 +29,8 @@ vi.mock("../../runtime-plan/tools.js", () => ({
   normalizeAgentRuntimeTools: vi.fn(({ tools }: { tools: unknown[] }) => [...tools]),
 }));
 
-vi.mock("../../local-model-lean.js", () => ({
-  filterLocalModelLeanTools: vi.fn(({ tools }: { tools: unknown[] }) => tools),
+vi.mock("../../agent-profiles.js", () => ({
+  filterToolsByAgentProfile: vi.fn(({ tools }: { tools: unknown[] }) => tools),
 }));
 
 vi.mock("../../tool-schema-projection.js", () => ({
@@ -76,7 +76,11 @@ describe("prepareEmbeddedAttemptBundleTools", () => {
         cronCreatorToolAllowlist: [],
         effectiveToolsAllow: undefined,
         inheritedToolAllowlist,
-        localModelLeanPreserveToolNames: [],
+        agentProfile: {
+          profile: { id: "openclaw/base", ancestry: ["openclaw/base"], spec: { common: {} } },
+          selectionSource: "fallback",
+        },
+        agentProfilePreserveToolNames: [],
         runtimeCapabilityProfile: undefined,
         toolsEnabled: true,
         toolsRaw,

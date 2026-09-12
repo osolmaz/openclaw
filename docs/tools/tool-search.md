@@ -21,8 +21,8 @@ surface instead of Tool Search controls, see [Code Mode](/tools/code-mode).
 
 Local inference routes use structured Tool Search automatically when
 `tools.toolSearch` is unset. This defers tool schemas while keeping the
-policy-approved capabilities available. It does not enable lean mode or remove
-optional tools. The default follows the active model for each run, including
+policy-approved capabilities available. It does not select an Agent Profile or
+remove optional tools. The default follows the active model for each run, including
 model switches and fallbacks, without changing another agent's settings.
 
 When enabled for OpenClaw runs, the model automatically receives a bounded
@@ -351,8 +351,8 @@ a hosted model. Other providers are not classified from model names or a
 loopback URL alone.
 
 An explicit `tools.toolSearch` value takes precedence, including `false`.
-Setting `agents.defaults.experimental.localModelLean: false` restores optional
-tools but does not turn off automatic Tool Search.
+Selecting `agents.defaults.agentProfileId: "openclaw/base"` restores the full
+profile capability set but does not turn off automatic Tool Search.
 
 Enable Tool Search explicitly for OpenClaw runs with the default code bridge:
 

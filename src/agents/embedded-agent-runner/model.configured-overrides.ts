@@ -604,6 +604,10 @@ export function applyConfiguredProviderOverrides(params: {
           }),
           contextWindow,
           contextTokens: metadataOverrideModel?.contextTokens ?? discoveredModel.contextTokens,
+          modelSizeClass:
+            metadataOverrideModel?.modelSizeClass ??
+            configuredStaticCatalogModel?.modelSizeClass ??
+            discoveredModel.modelSizeClass,
           ...(normalizedResolvedMaxTokens !== undefined
             ? {
                 maxTokens: normalizedResolvedMaxTokens,

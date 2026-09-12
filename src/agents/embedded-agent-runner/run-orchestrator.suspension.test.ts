@@ -605,7 +605,10 @@ describe("embedded run detached session metadata", () => {
           clientToolCount: 0,
           effectiveToolCount: 0,
           effectiveWorkspace: params.workspaceDir,
-          localModelLeanEnabled: false,
+          agentProfile: {
+            profile: { id: "openclaw/base", ancestry: ["openclaw/base"], spec: { common: {} } },
+            selectionSource: "fallback",
+          },
           sessionAgentId: "research",
         });
         await recorder?.flush();

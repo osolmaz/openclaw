@@ -1,8 +1,8 @@
 import { findConfiguredProviderModel } from "../../config/model-provider-config.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import type { Model } from "../../llm/types.js";
 import type { PluginMetadataSnapshotOwnerMaps } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { createProviderModelCatalogIdNormalizer } from "../../plugins/provider-model-routes.js";
+import type { ProviderRuntimeModel } from "../../plugins/provider-runtime-model.types.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
 import { resolveCatalogOwnedModelCompat } from "../model-compat-catalog.js";
 import { attachModelProviderLocalService } from "../provider-local-service.js";
@@ -47,7 +47,7 @@ export function buildConfiguredFallbackModel(params: {
   getStaticCatalogModel?: () => StaticCatalogFallbackModel | undefined;
   workspaceDir?: string;
   runtimeHooks?: ProviderRuntimeHooks;
-}): Model | undefined {
+}): ProviderRuntimeModel | undefined {
   const { provider, modelId, cfg, agentDir, workspaceDir, runtimeHooks } = params;
   const providerConfig = resolveConfiguredProviderConfig(cfg, provider);
   const requestTimeoutMs = resolveProviderRequestTimeoutMs(providerConfig?.timeoutSeconds);
@@ -199,6 +199,7 @@ export function buildConfiguredFallbackModel(params: {
             }),
             contextWindow: resolvedFallbackContextWindow,
             contextTokens: configuredModel?.contextTokens ?? staticCatalogModel?.contextTokens,
+            modelSizeClass: configuredModel?.modelSizeClass ?? staticCatalogModel?.modelSizeClass,
             // maxTokens is a wire-level output cap, not a context-budget fallback.
             // Omit an unknown cap so strict providers can apply their own limit.
             ...(normalizedResolvedFallbackMaxTokens !== undefined
@@ -216,7 +217,7 @@ export function buildConfiguredFallbackModel(params: {
               : {}),
             compat: fallbackCompat,
             mediaInput: fallbackMediaInput,
-          } as Model,
+          } as ProviderRuntimeModel,
           providerRequest,
         ),
         providerConfig?.localService,

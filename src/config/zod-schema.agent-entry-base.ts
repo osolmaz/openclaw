@@ -1,5 +1,7 @@
 import { parseProviderModelRef } from "@openclaw/model-catalog-core/model-catalog-refs";
 import { z } from "zod";
+import { AGENT_PROFILE_SELECTORS } from "./agent-profile-ids.js";
+import { CONTEXT_SERIALIZATION_MODES } from "./context-serialization.js";
 import { AgentModelSchema } from "./zod-schema.agent-model.js";
 
 const AgentRuntimePolicySchema = z
@@ -88,7 +90,8 @@ export const AgentEntryBaseSchema = z
       .optional(),
     bootstrapMaxChars: z.number().int().positive().optional(),
     bootstrapTotalMaxChars: z.number().int().positive().optional(),
-    experimental: z.object({ localModelLean: z.boolean().optional() }).strict().optional(),
+    agentProfileId: z.enum(AGENT_PROFILE_SELECTORS).optional(),
+    contextSerialization: z.enum(CONTEXT_SERIALIZATION_MODES).optional(),
     skills: z.array(z.string()).optional(),
     subagents: z
       .object({

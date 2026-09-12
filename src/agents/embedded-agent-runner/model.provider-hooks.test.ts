@@ -65,7 +65,7 @@ describe("resolved model Tool Search policy", () => {
     { provider: "custom-host", api: "openai-responses", id: "hosted-model", expected: false },
   ] as const)("prepares $provider/$id using its $api policy", ({ expected, ...route }) => {
     const config: OpenClawConfig = {
-      agents: { defaults: { experimental: { localModelLean: false } } },
+      agents: { defaults: { agentProfileId: "openclaw/base" } },
     };
     const resolved = normalizeResolvedModel({
       provider: route.provider,

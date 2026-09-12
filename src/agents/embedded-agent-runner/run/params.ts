@@ -83,10 +83,17 @@ type ReasoningStreamPayload = Pick<
 
 export type CurrentInboundPromptContext = {
   text: string;
+  /** Lean projection owned by the context producer. */
+  leanText?: string;
   /** Producer-owned fragments for model projection; text remains the legacy rendering. */
   fragments?: import("../../internal-runtime-context.js").RuntimeContextFragment[];
   resumableText?: string;
+  leanResumableText?: string;
   promptJoiner?: "\n\n" | "\n" | " ";
+  serializationStats?: {
+    removedSessionMessages: number;
+    deduplicatedMessages: number;
+  };
   /** Generated goal blocks owned by inbound-context assembly, never user text. */
   injectedGoalContexts?: string[];
 };

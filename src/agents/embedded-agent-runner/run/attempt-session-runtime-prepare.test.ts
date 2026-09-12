@@ -194,7 +194,10 @@ function createFixture() {
     },
     toolBase: {
       computerContextEpoch: { value: 0 },
-      localModelLeanEnabled: false,
+      agentProfile: {
+        profile: { id: "openclaw/base", ancestry: ["openclaw/base"], spec: { common: {} } },
+        selectionSource: "fallback",
+      },
       codeModeControlsEnabledForRun: false,
     },
     toolCatalog: {

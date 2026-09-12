@@ -193,11 +193,16 @@ export async function runEmbeddedAttemptPromptPhase(
       ...(preparedUserTurnMessage ? { preparedUserTurnMessage } : {}),
       sessionAgentId,
       setActiveSessionSystemPrompt,
+      contextSerialization: prepared.toolBase?.contextSerialization,
       ...(systemPromptReport ? { systemPromptReport } : {}),
       systemPromptText,
       toolResultPromptProjectionState,
     });
     const { hookMessagesForCurrentPrompt, promptForModel, systemPromptForHook } = promptContext;
+    trajectoryRecorder?.recordEvent(
+      "context.serialization",
+      promptContext.contextSerializationReport,
+    );
     sessionRuntimeState.prePromptMessageCount = promptContext.prePromptMessageCount;
     setCurrentUserTimestampOverride(promptContext.currentUserTimestampOverride);
     const beforeAgentRunOutcome =

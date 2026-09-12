@@ -178,12 +178,6 @@ describe("LabsPage", () => {
       note: "labs: update codeMode",
     },
     {
-      label: "Lean tools for local models",
-      sourceConfig: { agents: { defaults: { experimental: { localModelLean: true } } } },
-      expectedPatch: { agents: { defaults: { experimental: { localModelLean: null } } } },
-      note: "labs: update localModelLean",
-    },
-    {
       label: "Custom plugin UI",
       sourceConfig: { gateway: { controlUi: { experimental: { customPlugins: true } } } },
       expectedPatch: { gateway: { controlUi: { experimental: { customPlugins: null } } } },
@@ -253,12 +247,6 @@ describe("LabsPage", () => {
       sourceConfig: { tools: { loopDetection: { enabled: false } } },
       expectedPatch: { tools: { loopDetection: { enabled: true } } },
       note: "labs: update loopDetection",
-    },
-    {
-      label: "Lean tools for local models",
-      sourceConfig: {},
-      expectedPatch: { agents: { defaults: { experimental: { localModelLean: true } } } },
-      note: "labs: update localModelLean",
     },
     {
       label: "CLI agents",

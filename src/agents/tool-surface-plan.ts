@@ -1,4 +1,6 @@
+import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { ResolvedAgentProfile } from "./agent-profiles.js";
 import { getActiveAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
 import {
   applyCodeModeCatalog,
@@ -18,16 +20,22 @@ type AgentToolSurfacePlanParams = {
   config?: OpenClawConfig;
   agentId?: string;
   sessionKey?: string;
-  forceDirectMessageTool: boolean;
-  model?: { compat?: unknown; toolSearchMode?: "tools" | false };
   modelProvider?: string;
   modelId?: string;
+  resolvedProfile?: ResolvedAgentProfile;
+  forceDirectMessageTool: boolean;
+  model?: {
+    compat?: unknown;
+    modelSizeClass?: ModelSizeClass;
+    toolSearchMode?: "tools" | false;
+  };
   codeModeOverride?: boolean | "auto";
   toolsEnabled: boolean;
   disableTools?: boolean;
   isRawModelRun: boolean;
   toolsAllow?: readonly string[];
   forceCodeModeControls?: boolean;
+  forceDirectTools?: boolean;
 };
 
 export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) {
@@ -49,6 +57,10 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     config: params.config,
     agentId: params.agentId,
     sessionKey: params.sessionKey,
+    modelProvider: params.modelProvider,
+    modelId: params.modelId,
+    modelSizeClass: params.model?.modelSizeClass,
+    resolvedProfile: params.resolvedProfile,
     completionPrivateMessageOnly,
     model: params.model,
   });
@@ -62,12 +74,16 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     !completionPrivateMessageOnly;
   const codeModeControlsEnabled =
     toolsAvailable &&
+    params.forceDirectTools !== true &&
     // Restart recovery continues one provider turn. Keep its original control
     // schema even when the reloaded config disables Code Mode for new turns.
     (params.forceCodeModeControls === true ||
       isCodeModeEngagedForModel(codeModeConfig, params.model));
   const toolSearchControlsEnabled =
-    toolsAvailable && !codeModeControlsEnabled && toolSearchConfig.enabled;
+    toolsAvailable &&
+    params.forceDirectTools !== true &&
+    !codeModeControlsEnabled &&
+    toolSearchConfig.enabled;
   return {
     codeModeControlsEnabled,
     toolSearchControlsEnabled,

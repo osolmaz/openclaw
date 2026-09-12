@@ -1685,6 +1685,7 @@
                   "concepts/managed-worktrees",
                   "concepts/oauth",
                   "start/bootstrapping",
+                  "concepts/agent-profiles",
                   "concepts/experimental-features"
                 ]
               },

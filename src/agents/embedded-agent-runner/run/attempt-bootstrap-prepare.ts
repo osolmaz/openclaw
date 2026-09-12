@@ -1,5 +1,10 @@
 import path from "node:path";
 import { isEmbeddedMode } from "../../../infra/embedded-mode.js";
+import type { ResolvedAgentProfile } from "../../agent-profiles.js";
+import {
+  prepareAgentProfileWorkspaceContext,
+  type AgentProfileWorkspaceContextReport,
+} from "../../agent-profiles/workspace-context.js";
 import { buildBootstrapBudgetState, buildBootstrapInjectionStats } from "../../bootstrap-budget.js";
 import {
   buildBootstrapContextForFiles,
@@ -28,6 +33,7 @@ import type { EmbeddedRunAttemptParams } from "./types.js";
 export async function prepareEmbeddedAttemptBootstrap(params: {
   attempt: EmbeddedRunAttemptParams;
   setup: EmbeddedAttemptSetup;
+  agentProfile: ResolvedAgentProfile;
   hasReadTool: boolean;
   isRawModelRun: boolean;
 }) {
@@ -100,6 +106,7 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
   }
   bootstrapRouting ??= await resolveBootstrapRouting(preloadedBootstrapFiles);
   const bootstrapMode = bootstrapRouting.bootstrapMode;
+  let workspaceContextReport: AgentProfileWorkspaceContextReport | undefined;
   const {
     bootstrapFiles: hookAdjustedBootstrapFiles,
     contextFiles: resolvedContextFiles,
@@ -129,6 +136,21 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
                 path.resolve(file.path) === executionAgentsPath,
             );
       const layeredBootstrapFiles = [...bootstrapFiles, ...executionProjectFiles];
+      const profileContext = await prepareAgentProfileWorkspaceContext({
+        resolvedProfile: params.agentProfile,
+        bootstrapFiles: layeredBootstrapFiles,
+        workspaceDir: bootstrapWorkspaceDir,
+        config: attempt.config,
+        agentId: params.setup.sessionAgentId,
+        warn: bootstrapWarn,
+      });
+      if (profileContext) {
+        workspaceContextReport = profileContext.report;
+        return {
+          bootstrapFiles: profileContext.sourceFiles,
+          contextFiles: profileContext.contextFiles,
+        };
+      }
       return {
         bootstrapFiles: layeredBootstrapFiles,
         contextFiles: buildBootstrapContextForFiles(layeredBootstrapFiles, {
@@ -186,6 +208,7 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
     bootstrapMode,
     contextFiles,
     bootstrapInjectionStats,
+    ...(workspaceContextReport ? { workspaceContextReport } : {}),
     shouldRecordCompletedBootstrapTurn,
     workspaceNotes,
   };

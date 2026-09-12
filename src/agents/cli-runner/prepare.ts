@@ -61,6 +61,8 @@ import {
   resolveAdmittedRunActiveAssertion,
   resolvePreparedRunAdmission,
 } from "../admitted-run-context.js";
+import { resolveAgentProfile } from "../agent-profiles.js";
+import { prepareAgentProfileWorkspaceContext } from "../agent-profiles/workspace-context.js";
 import { hasAgentRosterProperty, resolveAgentWorkspaceDir } from "../agent-scope-config.js";
 import { resolveAgentDir, resolveSessionAgentIds } from "../agent-scope.js";
 import { hasUsableOAuthCredential } from "../auth-profiles/credential-state.js";
@@ -94,6 +96,7 @@ import {
   claudeCliSessionTranscriptHasContent,
   claudeCliSessionTranscriptHasOrphanedToolUse,
 } from "../command/attempt-execution.helpers.js";
+import { resolveContextSerialization } from "../context-serialization/resolve.js";
 import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { resolveContextTokensForModel } from "../context.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
@@ -225,6 +228,22 @@ const defaultPrepareDeps = {
 };
 const prepareDeps = { ...defaultPrepareDeps };
 
+function findCliModelCatalogEntry(params: {
+  catalog: ModelCatalogEntry[];
+  providers: string[];
+  models: string[];
+}): ModelCatalogEntry | undefined {
+  for (const provider of params.providers) {
+    for (const model of params.models) {
+      const entry = findModelCatalogEntry(params.catalog, { provider, modelId: model });
+      if (entry) {
+        return entry;
+      }
+    }
+  }
+  return undefined;
+}
+
 function findSelectableContextWindowEntry(params: {
   catalog: ModelCatalogEntry[];
   providers: string[];
@@ -278,7 +297,15 @@ function prependCliSessionDriftUserContext(
   return {
     ...context,
     text: [note, context.text].join("\n\n"),
+    ...(context.leanText !== undefined
+      ? { leanText: [note, context.leanText].filter(Boolean).join("\n\n") }
+      : {}),
     ...(context.resumableText ? { resumableText: [note, context.resumableText].join("\n\n") } : {}),
+    ...(context.leanResumableText !== undefined
+      ? {
+          leanResumableText: [note, context.leanResumableText].filter(Boolean).join("\n\n"),
+        }
+      : {}),
   };
 }
 
@@ -1078,16 +1105,24 @@ async function prepareCliRunContextWithinReadFence(
   // resolveAnthropicFixedContextWindow deliberately ignores catalog scalars,
   // so the selected (or default) option must apply after it or a 200k session
   // would auto-compact against a 1M budget.
-  const selectableContextEntry = findSelectableContextWindowEntry({
-    catalog: params.config
-      ? prepareDeps.loadManifestModelCatalog({ config: params.config, workspaceDir })
-      : [],
-    providers: uniqueStrings(
-      [params.provider, backendResolved.modelProvider].filter(
-        (provider): provider is string => typeof provider === "string" && provider.length > 0,
-      ),
+  const manifestModelCatalog = params.config
+    ? prepareDeps.loadManifestModelCatalog({ config: params.config, workspaceDir })
+    : [];
+  const catalogProviders = uniqueStrings(
+    [modelProvider, backendResolved.modelProvider, params.provider].filter(
+      (provider): provider is string => typeof provider === "string" && provider.length > 0,
     ),
-    models: uniqueStrings([modelId, normalizedCatalogModel]),
+  );
+  const catalogModels = uniqueStrings([modelId, normalizedCatalogModel]);
+  const agentProfileModelSizeClass = findCliModelCatalogEntry({
+    catalog: manifestModelCatalog,
+    providers: catalogProviders,
+    models: catalogModels,
+  })?.modelSizeClass;
+  const selectableContextEntry = findSelectableContextWindowEntry({
+    catalog: manifestModelCatalog,
+    providers: catalogProviders,
+    models: catalogModels,
   });
   if (selectableContextEntry) {
     const contextWindowProfile = resolveModelContextWindowProfile({
@@ -1116,12 +1151,26 @@ async function prepareCliRunContextWithinReadFence(
   const autoReseedHistoryChars = isClaudeCli
     ? resolveAutoCliSessionReseedHistoryChars(contextWindowInfo.tokens)
     : undefined;
+  const resolvedProfile = resolveAgentProfile({
+    config: params.config,
+    agentId: sessionAgentId,
+    sessionKey: params.sessionKey,
+    modelProvider,
+    modelId,
+    modelSizeClass: agentProfileModelSizeClass,
+  });
 
   const sessionLabel = params.sessionKey ?? params.sessionId;
-  const { bootstrapFiles, contextFiles: resolvedContextFiles } = skipsTurnPreparation
+  const bootstrapWorkspaceDir = params.bootstrapWorkspaceDir ?? workspaceDir;
+  const bootstrapWarn = prepareDeps.makeBootstrapWarn({
+    sessionLabel,
+    workspaceDir,
+    warn: (message) => cliBackendLog.warn(message),
+  });
+  const resolvedBootstrap = skipsTurnPreparation
     ? { bootstrapFiles: [], contextFiles: [] }
     : await prepareDeps.resolveBootstrapContextForRun({
-        workspaceDir: params.bootstrapWorkspaceDir ?? workspaceDir,
+        workspaceDir: bootstrapWorkspaceDir,
         config: params.config,
         sessionKey: params.sessionKey,
         sessionId: params.sessionId,
@@ -1129,12 +1178,21 @@ async function prepareCliRunContextWithinReadFence(
         agentId: sessionAgentId,
         contextMode: params.bootstrapContextMode,
         runKind: params.bootstrapContextRunKind,
-        warn: prepareDeps.makeBootstrapWarn({
-          sessionLabel,
-          workspaceDir,
-          warn: (message) => cliBackendLog.warn(message),
-        }),
+        warn: bootstrapWarn,
       });
+  const profileContext = skipsTurnPreparation
+    ? undefined
+    : await prepareAgentProfileWorkspaceContext({
+        resolvedProfile,
+        bootstrapFiles: resolvedBootstrap.bootstrapFiles,
+        workspaceDir: bootstrapWorkspaceDir,
+        config: params.config,
+        agentId: sessionAgentId,
+        warn: bootstrapWarn,
+      });
+  const bootstrapFiles = profileContext?.sourceFiles ?? resolvedBootstrap.bootstrapFiles;
+  const resolvedContextFiles = profileContext?.contextFiles ?? resolvedBootstrap.contextFiles;
+  const workspaceContextReport = profileContext?.report;
   // Mirror the embedded runner's bootstrap routing for backends that transport
   // OpenClaw's system prompt. Only a declared native-tool backend can complete
   // the file-based ritual; other backends receive limited guidance.
@@ -1153,7 +1211,7 @@ async function prepareCliRunContextWithinReadFence(
       ? undefined
       : await resolveWorkspaceBootstrapRouting({
           isWorkspaceBootstrapPending: prepareDeps.isWorkspaceBootstrapPending,
-          bootstrapFiles,
+          bootstrapFiles: resolvedBootstrap.bootstrapFiles,
           bootstrapFilesProvideAccess: false,
           bootstrapContextRunKind: params.bootstrapContextRunKind,
           trigger: params.trigger,
@@ -2103,12 +2161,18 @@ async function prepareCliRunContextWithinReadFence(
         params.currentInboundContext,
         reusableCliSession,
       );
+      const contextSerialization = resolveContextSerialization({
+        config: params.config,
+        agentId: sessionAgentId,
+        resolvedProfile,
+      });
       const renderCurrentPrompt = (prompt: string, preferResumableText = false) =>
         annotateInterSessionPromptText(
           buildCurrentInboundPrompt({
             context: currentInboundContext,
             prompt,
             preferResumableText,
+            serialization: contextSerialization,
           }),
           params.inputProvenance,
         );
@@ -2156,6 +2220,10 @@ async function prepareCliRunContextWithinReadFence(
       sessionKey: params.sessionKey,
       provider: params.provider,
       model: modelId,
+      agentProfile: {
+        id: resolvedProfile.profile.id,
+        selectionSource: resolvedProfile.selectionSource,
+      },
       workspaceDir,
       bootstrapMaxChars,
       bootstrapTotalMaxChars,
@@ -2164,6 +2232,7 @@ async function prepareCliRunContextWithinReadFence(
         warningMode: bootstrapPromptWarningMode,
         warning: bootstrapPromptWarning,
       }),
+      workspaceContext: workspaceContextReport,
       sandbox: rootedExecution
         ? { mode: sandboxStatus.mode, sandboxed: Boolean(rootedExecution.sandbox) }
         : { mode: "off", sandboxed: false },

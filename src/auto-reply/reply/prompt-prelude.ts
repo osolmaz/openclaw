@@ -96,6 +96,8 @@ type ReplyPromptEnvelopeBaseParams = {
   baseBody: string;
   hasUserBody: boolean;
   inboundUserContext: string;
+  leanInboundUserContext?: string;
+  leanInboundContextStats?: CurrentInboundPromptContext["serializationStats"];
   activeGoalContext?: string;
   inboundUserContextPromptJoiner?: CurrentInboundPromptContext["promptJoiner"];
   isBareSessionReset: boolean;
@@ -197,6 +199,15 @@ export function buildReplyPromptEnvelopeBase(
   const currentInboundContextText = isRoomEvent
     ? buildRoomEventContext(params, inboundUserContext)
     : [inboundUserContext, resolvePerTurnDeliveryDirective(params)].filter(Boolean).join("\n\n");
+  const leanInboundUserContext = params.leanInboundUserContext ?? inboundUserContext;
+  const leanResumableRoomEventContext = isRoomEvent
+    ? buildRoomEventContext(params, buildResumableRoomContext(leanInboundUserContext))
+    : undefined;
+  const leanInboundContextText = isRoomEvent
+    ? buildRoomEventContext(params, leanInboundUserContext)
+    : [leanInboundUserContext, resolvePerTurnDeliveryDirective(params)]
+        .filter(Boolean)
+        .join("\n\n");
   const resetModelBody = params.isBareSessionReset
     ? [
         params.inboundUserContext,
@@ -237,9 +248,16 @@ export function buildReplyPromptEnvelopeBase(
     !params.isBareSessionReset && currentInboundContextText
       ? {
           text: currentInboundContextText,
+          leanText: leanInboundContextText,
           fragments,
           ...(resumableRoomEventContext ? { resumableText: resumableRoomEventContext } : {}),
+          ...(leanResumableRoomEventContext
+            ? { leanResumableText: leanResumableRoomEventContext }
+            : {}),
           promptJoiner: params.inboundUserContextPromptJoiner,
+          ...(params.leanInboundContextStats
+            ? { serializationStats: params.leanInboundContextStats }
+            : {}),
           ...(params.activeGoalContext ? { injectedGoalContexts: [params.activeGoalContext] } : {}),
         }
       : undefined;

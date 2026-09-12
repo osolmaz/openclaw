@@ -168,7 +168,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "web_search", "exec"]);
   });
 
-  it("drops heavyweight tools when the experimental lean local-model flag is enabled", () => {
+  it("drops heavyweight tools when the small Agent Profile is enabled", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -181,9 +181,7 @@ describe("applyModelProviderToolPolicy", () => {
         config: {
           agents: {
             defaults: {
-              experimental: {
-                localModelLean: true,
-              },
+              agentProfileId: "openclaw/small",
             },
           },
         },
@@ -196,7 +194,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "exec"]);
   });
 
-  it("drops heavyweight tools when lean local-model mode is enabled for the current agent", () => {
+  it("drops heavyweight tools when the small Agent Profile is enabled for the current agent", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -211,9 +209,7 @@ describe("applyModelProviderToolPolicy", () => {
             list: [
               {
                 id: "gemma",
-                experimental: {
-                  localModelLean: true,
-                },
+                agentProfileId: "openclaw/small",
               },
             ],
           },
@@ -228,7 +224,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "exec"]);
   });
 
-  it("drops heavyweight tools when lean local-model mode is enabled for the default agent", () => {
+  it("drops heavyweight tools when the small Agent Profile is enabled for the default agent", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -244,9 +240,7 @@ describe("applyModelProviderToolPolicy", () => {
               {
                 id: "gemma",
                 default: true,
-                experimental: {
-                  localModelLean: true,
-                },
+                agentProfileId: "openclaw/small",
               },
             ],
           },
@@ -260,7 +254,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "exec"]);
   });
 
-  it("drops heavyweight tools when lean local-model mode is enabled for the session agent", () => {
+  it("drops heavyweight tools when the small Agent Profile is enabled for the session agent", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -275,15 +269,11 @@ describe("applyModelProviderToolPolicy", () => {
             list: [
               {
                 id: "main",
-                experimental: {
-                  localModelLean: false,
-                },
+                agentProfileId: "openclaw/base",
               },
               {
                 id: "gemma",
-                experimental: {
-                  localModelLean: true,
-                },
+                agentProfileId: "openclaw/small",
               },
             ],
           },
@@ -298,7 +288,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "exec"]);
   });
 
-  it("lets a current agent disable inherited lean local-model mode", () => {
+  it("lets a current agent override an inherited small Agent Profile", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -311,16 +301,12 @@ describe("applyModelProviderToolPolicy", () => {
         config: {
           agents: {
             defaults: {
-              experimental: {
-                localModelLean: true,
-              },
+              agentProfileId: "openclaw/small",
             },
             list: [
               {
                 id: "main",
-                experimental: {
-                  localModelLean: false,
-                },
+                agentProfileId: "openclaw/base",
               },
             ],
           },
@@ -335,7 +321,7 @@ describe("applyModelProviderToolPolicy", () => {
     expect(toolNames(filtered)).toEqual(["read", "browser", "automations", "message", "exec"]);
   });
 
-  it("keeps heavyweight tools when the experimental lean local-model flag is not enabled", () => {
+  it("keeps heavyweight tools when the small Agent Profile is not enabled", () => {
     const filtered = testing.applyModelProviderToolPolicy(
       [
         { name: "read" },
@@ -348,9 +334,7 @@ describe("applyModelProviderToolPolicy", () => {
         config: {
           agents: {
             defaults: {
-              experimental: {
-                localModelLean: false,
-              },
+              agentProfileId: "openclaw/base",
             },
           },
         },

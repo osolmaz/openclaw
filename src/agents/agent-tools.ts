@@ -12,7 +12,7 @@ import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery
 import type { ThinkLevel } from "../auto-reply/thinking.shared.js";
 import type { ChatType } from "../channels/chat-type.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
-import type { ModelCompatConfig } from "../config/types.models.js";
+import type { ModelCompatConfig, ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GroupToolPolicyConfig } from "../config/types.tools.js";
 import type { DiagnosticTraceContext } from "../infra/diagnostic-trace-context.js";
@@ -34,6 +34,11 @@ import type { SkillSnapshot, SkillUsagePath } from "../skills/types.js";
 import type { SkillWorkshopRunOptions } from "../skills/workshop/types.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import type { OperationalRunInstanceRef } from "./admitted-run-context.js";
+import {
+  filterToolsByAgentProfile,
+  resolveAgentProfilePreserveToolNames,
+  type ResolvedAgentProfile,
+} from "./agent-profiles.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
 import {
   bindAssembledAgentToolActionDescriptor,
@@ -83,10 +88,6 @@ import { pinExecToolTarget } from "./exec-tool-target-pinning.js";
 import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 import { resolveImageSanitizationLimits } from "./image-sanitization.js";
 import { resolveExecToolConfig } from "./lazy-exec-tool.js";
-import {
-  filterLocalModelLeanTools,
-  resolveLocalModelLeanPreserveToolNames,
-} from "./local-model-lean.js";
 import { createMemoryWriteProvenanceObserver } from "./memory-write-provenance.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import { resolveOpenClawPluginToolsForOptions } from "./openclaw-plugin-tools.js";
@@ -146,22 +147,28 @@ function applyModelProviderToolPolicy(
     modelProvider?: string;
     modelApi?: string;
     modelId?: string;
+    modelSizeClass?: ModelSizeClass;
+    resolvedAgentProfile?: ResolvedAgentProfile;
     agentId?: string;
     sessionKey?: string;
     agentDir?: string;
     modelCompat?: ModelCompatConfig;
     suppressManagedWebSearch?: boolean;
     runtimeToolAllowlist?: string[];
-    localModelLeanPreserveToolNames?: string[];
+    agentProfilePreserveToolNames?: string[];
   },
 ): AnyAgentTool[] {
   let tools = toolsInput;
-  tools = filterLocalModelLeanTools({
+  tools = filterToolsByAgentProfile({
     tools,
     config: params?.config,
     agentId: params?.agentId,
     sessionKey: params?.sessionKey,
-    preserveToolNames: params?.localModelLeanPreserveToolNames ?? params?.runtimeToolAllowlist,
+    modelProvider: params?.modelProvider,
+    modelId: params?.modelId,
+    modelSizeClass: params?.modelSizeClass,
+    resolvedProfile: params?.resolvedAgentProfile,
+    preserveToolNames: params?.agentProfilePreserveToolNames ?? params?.runtimeToolAllowlist,
   });
 
   if (
@@ -281,6 +288,10 @@ type OpenClawCodingToolsOptions = {
   modelProvider?: string;
   /** Model id for the current provider (used for model-specific tool gating). */
   modelId?: string;
+  /** Trusted total-parameter size class used for Agent Profile selection. */
+  modelSizeClass?: ModelSizeClass;
+  /** Run-scoped Agent Profile selected for this model. */
+  resolvedAgentProfile?: ResolvedAgentProfile;
   /** Internal review-run restrictions and proposal provenance. */
   skillWorkshop?: SkillWorkshopRunOptions;
   /** Attempt-local authority to start or redirect delegated work. */
@@ -519,7 +530,7 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
   const sourceReplyOnly =
     capabilityProfile.policy.requesterPolicySource === "completion-handoff" &&
     options?.sourceReplyDeliveryMode === "message_tool_only";
-  const localModelLeanPreserveToolNames = resolveLocalModelLeanPreserveToolNames({
+  const agentProfilePreserveToolNames = resolveAgentProfilePreserveToolNames({
     toolNames: capabilityProfile.policy.explicitToolOverrideAllowlist,
     forceMessageTool: options?.forceMessageTool,
     sourceReplyDeliveryMode: options?.sourceReplyDeliveryMode,
@@ -1035,7 +1046,7 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
     modelCompat: options?.modelCompat,
     suppressManagedWebSearch: options?.suppressManagedWebSearch,
     runtimeToolAllowlist: options?.runtimeToolAllowlist,
-    localModelLeanPreserveToolNames,
+    agentProfilePreserveToolNames,
   });
   options?.recordToolPrepStage?.("model-provider-policy");
   // Sender identity is primarily command/action auth, with one Gateway parity exception:

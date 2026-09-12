@@ -15,18 +15,16 @@ import { extractModelCompat } from "../../../plugins/provider-model-compat.js";
 import { getPluginToolMeta } from "../../../plugins/tool-metadata.js";
 import { isSubagentSessionKey } from "../../../routing/session-key.js";
 import type { NestedToolActivity } from "../../../sessions/nested-tool-activity.js";
+import { resolveAgentProfile, resolveAgentProfilePreserveToolNames } from "../../agent-profiles.js";
 import { createOpenClawCodingTools } from "../../agent-tools.js";
 import { createSkillInstructionDeliveryCache } from "../../agent-tools.read.js";
 import { getChannelAgentToolMeta } from "../../channel-tools.js";
 import { createCodeModePermissionChangeReason } from "../../code-mode-permission-change.js";
 import type { CodeModeSkill } from "../../code-mode-skills.js";
 import { loadPairedComputerUseAvailabilityForSurface } from "../../computer-use-node-capabilities.js";
+import { resolveContextSerialization } from "../../context-serialization/resolve.js";
 import { resolveConversationCapabilityProfile } from "../../conversation-capability-profile.js";
 import { projectConversationToolNames } from "../../conversation-tool-policy-pipeline.js";
-import {
-  isLocalModelLeanEnabled,
-  resolveLocalModelLeanPreserveToolNames,
-} from "../../local-model-lean.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { supportsModelTools } from "../../model-tool-support.js";
 import { recordAgentCleanupFailure } from "../../run-cleanup-timeout.js";
@@ -94,6 +92,19 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     toolsEnabled,
     toolsAllow: toolsAllowWithForcedRuntimeTools,
   });
+  const agentProfile = resolveAgentProfile({
+    config: attempt.config,
+    agentId: params.setup.sessionAgentId,
+    sessionKey: attempt.sessionKey,
+    modelProvider: attempt.provider,
+    modelId: attempt.modelId,
+    modelSizeClass: attempt.model.modelSizeClass,
+  });
+  const contextSerialization = resolveContextSerialization({
+    config: attempt.config,
+    agentId: params.setup.sessionAgentId,
+    resolvedProfile: agentProfile,
+  });
   const {
     codeModeControlsEnabled: codeModeControlsEnabledForRun,
     toolSearchConfig,
@@ -107,6 +118,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     model: attempt.model,
     modelProvider: attempt.provider,
     modelId: attempt.modelId,
+    resolvedProfile: agentProfile,
     codeModeOverride: attempt.codeModeOverride,
     toolsEnabled,
     disableTools: attempt.disableTools,
@@ -231,12 +243,7 @@ export async function prepareEmbeddedAttemptToolBase(params: {
       signal: params.runAbortController.signal,
     })
   )?.prepared;
-  const localModelLeanEnabled = isLocalModelLeanEnabled({
-    config: attempt.config,
-    agentId: params.setup.sessionAgentId,
-    sessionKey: attempt.sessionKey,
-  });
-  const localModelLeanPreserveToolNames = resolveLocalModelLeanPreserveToolNames({
+  const agentProfilePreserveToolNames = resolveAgentProfilePreserveToolNames({
     toolNames: runtimeCapabilityProfile.policy.explicitToolOverrideAllowlist,
     forceMessageTool: attempt.forceMessageTool,
     sourceReplyDeliveryMode: attempt.sourceReplyDeliveryMode,
@@ -401,14 +408,15 @@ export async function prepareEmbeddedAttemptToolBase(params: {
     codeModeSkills,
     computerContextEpoch,
     skillInstructionDeliveryCache,
+    contextSerialization,
     cronCreatorToolAllowlist,
     cronCreatorToolAllowlistCaptureRef,
     effectiveToolsAllow,
     forceDirectMessageTool,
     requireExplicitMessageTarget,
     inheritedToolAllowlist,
-    localModelLeanEnabled,
-    localModelLeanPreserveToolNames,
+    agentProfile,
+    agentProfilePreserveToolNames,
     replaySafetyOptions,
     runtimeCapabilityProfile,
     runCleanups,

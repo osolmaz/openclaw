@@ -2968,18 +2968,18 @@ describe("runSetupWizard", () => {
   });
 
   it.each([
-    { provider: "openai", explicitLean: undefined, expectedLean: undefined },
-    { provider: "managed-local", explicitLean: undefined, expectedLean: undefined },
-    { provider: "managed-local", explicitLean: false, expectedLean: false },
-    { provider: "managed-local", explicitLean: true, expectedLean: true },
+    { provider: "openai", explicitProfile: undefined },
+    { provider: "managed-local", explicitProfile: undefined },
+    { provider: "managed-local", explicitProfile: "openclaw/base" as const },
+    { provider: "managed-local", explicitProfile: "openclaw/small" as const },
   ])(
-    "verifies and persists classic $provider setup with lean=$explicitLean",
-    async ({ provider, explicitLean, expectedLean }) => {
+    "verifies and persists classic $provider setup with profile=$explicitProfile",
+    async ({ provider, explicitProfile }) => {
       const managed = provider === "managed-local";
       const modelRef = `${provider}/test-model`;
       readConfigFileSnapshot.mockResolvedValue(
         configSnapshot({
-          agents: { defaults: { experimental: { localModelLean: explicitLean } } },
+          agents: { defaults: { agentProfileId: explicitProfile } },
         }),
       );
       replaceConfigFile.mockImplementation(async ({ nextConfig }) => {
@@ -3012,7 +3012,7 @@ describe("runSetupWizard", () => {
         },
       }));
       verifySetupInferenceConfig.mockImplementationOnce(async ({ config, verifyAgentTools }) => {
-        expect(config.agents?.defaults?.experimental?.localModelLean).toBe(expectedLean);
+        expect(config.agents?.defaults?.agentProfileId).toBe(explicitProfile);
         expect(verifyAgentTools).toBe(true);
         expect(replaceConfigFile).not.toHaveBeenCalled();
         return { ok: true, modelRef, latencyMs: 1 };
@@ -3031,11 +3031,11 @@ describe("runSetupWizard", () => {
         expect(confirm).toHaveBeenCalledWith(optionalCheck);
       }
       expect(verifySetupInferenceConfig).toHaveBeenCalledOnce();
-      expect(persistedWizardConfigs().at(-1)?.agents?.defaults?.experimental?.localModelLean).toBe(
-        expectedLean,
+      expect(persistedWizardConfigs().at(-1)?.agents?.defaults?.agentProfileId).toBe(
+        explicitProfile,
       );
       expect(persistedWizardConfigs().at(-1)?.wizard ?? {}).not.toHaveProperty(
-        "localModelLeanAutoModel",
+        "agentProfileAutoModel",
       );
     },
   );

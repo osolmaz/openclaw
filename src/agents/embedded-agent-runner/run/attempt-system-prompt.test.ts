@@ -7,6 +7,7 @@ import {
 import { Type } from "typebox";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../../test/helpers/temp-dir.js";
+import { resolveAgentProfile } from "../../agent-profiles.js";
 import { addSession, deleteSession } from "../../bash-process-registry.js";
 import { createProcessSessionFixture } from "../../bash-process-registry.test-helpers.js";
 import { buildBootstrapBudgetState } from "../../bootstrap-budget.js";
@@ -105,6 +106,7 @@ async function preparePermissionPrompt(
   const capabilityToolNames = new Set(tools.map(({ name }) => name));
   const prepared = await prepareEmbeddedAttemptSystemPrompt({
     attempt,
+    agentProfile: resolveAgentProfile({}),
     activeContextEngine: undefined,
     bootstrap: {
       ...buildBootstrapBudgetState({ files: [] }),
@@ -148,6 +150,36 @@ async function preparePermissionPrompt(
 }
 
 describe("buildAttemptSystemPrompt", () => {
+  it("uses a profile-owned base prompt before provider transformation", () => {
+    const transform = vi.fn(({ context }) => `provider:${context.systemPrompt}`);
+    const result = buildAttemptSystemPrompt({
+      isRawModelRun: false,
+      baseSystemPromptOverride: "small profile prompt",
+      transformProviderSystemPrompt: transform,
+      embeddedSystemPrompt: {
+        workspaceDir: "/tmp/openclaw",
+        reasoningTagHint: false,
+        runtimeInfo: {
+          host: "test-host",
+          os: "Linux",
+          arch: "x64",
+          node: "v24.18.0",
+          model: "openai/gpt-5.5",
+        },
+        tools: [],
+        userTimezone: "UTC",
+        userDate: "2026-08-25",
+        contextFiles: [{ path: "/tmp/openclaw/AGENTS.md", content: "large workspace prompt" }],
+      },
+      providerTransform: baseProviderTransform,
+    });
+
+    expect(result.baseSystemPrompt).toBe("small profile prompt");
+    expect(result.systemPrompt).toContain("provider:small profile prompt");
+    expect(result.systemPrompt).not.toContain("large workspace prompt");
+    expect(transform).toHaveBeenCalledOnce();
+  });
+
   it.each([undefined, "agent:main:execution"])(
     "keeps the system prompt identical when execution-owned processes change: %s",
     async (sessionKey) => {
@@ -214,6 +246,7 @@ describe("buildAttemptSystemPrompt", () => {
       };
       const result = await prepareEmbeddedAttemptSystemPrompt({
         attempt: attempt as never,
+        agentProfile: resolveAgentProfile({}),
         bootstrap: {
           ...buildBootstrapBudgetState({ config, agentId: "marketing", files: [] }),
           workspaceNotes: [],

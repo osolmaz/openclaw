@@ -2466,6 +2466,116 @@ describe("prepareCliRunContext", () => {
     },
   );
 
+  it.each([
+    {
+      name: "explicit config",
+      config: { agents: { defaults: { contextSerialization: "lean" } } },
+    },
+    {
+      name: "the selected small profile",
+      config: { agents: { defaults: { agentProfileId: "openclaw/small" } } },
+    },
+  ] satisfies Array<{ name: string; config: OpenClawConfig }>)(
+    "uses lean current-turn context from $name",
+    async ({ config }) => {
+      const context = await fixture.prepare({
+        sessionKey: "agent:main:test",
+        agentId: "main",
+        trigger: "user",
+        transcriptPrompt: "latest ask",
+        currentInboundContext: {
+          text: "Verbose current-turn context",
+          leanText: "Lean current-turn context",
+        },
+        config,
+      });
+
+      expect(context.params.prompt).toBe("Lean current-turn context\n\nlatest ask");
+    },
+  );
+
+  it("applies the selected profile workspace budget to CLI system prompts", async () => {
+    const { dir } = fixture.session;
+    const agentsPath = path.join(dir, "AGENTS.md");
+    const soulPath = path.join(dir, "SOUL.md");
+    const identityPath = path.join(dir, "IDENTITY.md");
+    setCliRunnerPrepareTestDeps({
+      resolveBootstrapContextForRun: vi.fn(async () => ({
+        bootstrapFiles: [
+          {
+            name: "AGENTS.md" as const,
+            path: agentsPath,
+            content: "agent policy ".repeat(700),
+            missing: false,
+          },
+          {
+            name: "SOUL.md" as const,
+            path: soulPath,
+            content: "soul guidance ".repeat(400),
+            missing: false,
+          },
+          {
+            name: "IDENTITY.md" as const,
+            path: identityPath,
+            content: "Name: Bob",
+            missing: false,
+          },
+        ],
+        contextFiles: [],
+      })),
+    });
+
+    const context = await fixture.prepare({
+      sessionKey: "agent:main:test",
+      agentId: "main",
+      trigger: "user",
+      prompt: "Who are you?",
+      config: { agents: { defaults: { agentProfileId: "openclaw/small" } } },
+    });
+
+    expect(context.systemPrompt).toContain("Name: Bob");
+    expect(context.systemPromptReport.agentProfile).toEqual({
+      id: "openclaw/small",
+      selectionSource: "defaults-explicit",
+    });
+    expect(context.systemPromptReport.workspaceContext).toMatchObject({
+      totalMaxChars: 8_000,
+    });
+    expect(context.systemPromptReport.workspaceContext?.injectedChars).toBeLessThanOrEqual(8_000);
+    expect(
+      context.systemPromptReport.workspaceContext?.entries.map((entry) => entry.section),
+    ).toEqual(["agents", "soul", "identity"]);
+  });
+
+  it("uses lean current-turn context from model-size profile selection", async () => {
+    setCliRunnerPrepareTestDeps({
+      loadManifestModelCatalog: vi.fn(() => [
+        {
+          id: "test-model",
+          name: "Test Small Model",
+          provider: "test-cli",
+          modelSizeClass: "small",
+        },
+      ]),
+    });
+
+    const context = await fixture.prepare({
+      provider: "test-cli",
+      model: "test-model",
+      sessionKey: "agent:main:test",
+      agentId: "main",
+      trigger: "user",
+      transcriptPrompt: "latest ask",
+      currentInboundContext: {
+        text: "Verbose current-turn context",
+        leanText: "Lean current-turn context",
+      },
+      config: {},
+    });
+
+    expect(context.params.prompt).toBe("Lean current-turn context\n\nlatest ask");
+  });
+
   it("uses compact current-turn context when a room event resumes a CLI session", async () => {
     await withAuthenticatedHistory("test-cli", async (prepare) => {
       fixture.appendTranscript({
@@ -3088,8 +3198,10 @@ describe("prepareCliRunContext", () => {
     const context = await fixture.prepare({
       sessionKey: "agent:main:test",
       currentInboundContext: {
-        text: "Conversation info: ⟦openclaw:ctx⟧\nchannel=telegram",
+        text: "Verbose conversation info: ⟦openclaw:ctx⟧\nchannel=telegram",
+        leanText: "Lean conversation info: channel=telegram",
       },
+      config: { agents: { defaults: { contextSerialization: "lean" } } },
       extraSystemPrompt: "new stable prompt",
       extraSystemPromptStatic: "new stable prompt",
       cliSessionBinding: {
@@ -3109,6 +3221,8 @@ describe("prepareCliRunContext", () => {
       "OpenClaw resumed this CLI session after prompt content changed.",
     );
     expect(context.params.prompt).toContain("changed=system-prompt");
+    expect(context.params.prompt).toContain("Lean conversation info: channel=telegram");
+    expect(context.params.prompt).not.toContain("Verbose conversation info");
     expect(context.params.prompt).toContain("latest ask");
   });
 

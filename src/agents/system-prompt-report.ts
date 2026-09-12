@@ -115,10 +115,12 @@ export function buildSystemPromptReport(params: {
   sessionKey?: string;
   provider?: string;
   model?: string;
+  agentProfile?: SessionSystemPromptReport["agentProfile"];
   workspaceDir?: string;
   bootstrapMaxChars: number;
   bootstrapTotalMaxChars?: number;
   bootstrapTruncation?: SessionSystemPromptReport["bootstrapTruncation"];
+  workspaceContext?: SessionSystemPromptReport["workspaceContext"];
   sandbox?: SessionSystemPromptReport["sandbox"];
   systemPrompt: string;
   injectedWorkspaceFiles: BootstrapInjectionStat[];
@@ -139,10 +141,12 @@ export function buildSystemPromptReport(params: {
     sessionKey: params.sessionKey,
     provider: params.provider,
     model: params.model,
+    agentProfile: params.agentProfile,
     workspaceDir: params.workspaceDir,
     bootstrapMaxChars: params.bootstrapMaxChars,
     bootstrapTotalMaxChars: params.bootstrapTotalMaxChars,
     ...(params.bootstrapTruncation ? { bootstrapTruncation: params.bootstrapTruncation } : {}),
+    ...(params.workspaceContext ? { workspaceContext: params.workspaceContext } : {}),
     sandbox: params.sandbox,
     systemPrompt: {
       chars: systemPromptChars,

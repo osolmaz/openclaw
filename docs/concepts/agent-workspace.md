@@ -231,6 +231,34 @@ Suggested `.gitignore` starter:
   </Step>
 </Steps>
 
+## Agent Profile workspace context
+
+An Agent Profile can apply an OpenClaw-owned workspace-context policy through
+`spec["openclaw.ai"].prompt.workspaceContext`. The portable `agentprofiles`
+package treats this section as opaque data. OpenClaw owns its field meanings,
+validation, inheritance, and runtime behavior.
+
+The policy can include or exclude the canonical `AGENTS.md`, `SOUL.md`,
+`IDENTITY.md`, and `USER.md` sections, set per-section character limits, and
+choose `overflow: "truncate"` or `overflow: "error"`. It can also name
+additional files by exact workspace-relative path. OpenClaw never scans for
+undeclared additional files, and guarded loading rejects paths outside the
+workspace.
+
+Per-file limits apply before the aggregate limit. Protected `overflow: "error"`
+content must fit in full. Remaining truncatable content shares the available
+aggregate budget in proportion to its bounded size. The stored context report
+shows sizes and truncation causes without storing file contents.
+
+`BOOTSTRAP.md`, `BOOT.md`, and memory keep their separate lifecycle and privacy
+rules. Conversation history, skills, tool schemas, and tool selection also have
+separate controls. The built-in `openclaw/small` profile caps its managed
+workspace-file context at 8,000 characters, a rough 2,000-token proxy rather
+than an exact tokenizer limit.
+
+See [Agent Profiles](/concepts/agent-profiles) and
+[workspace and bootstrap configuration](/gateway/config-agents/workspace-and-bootstrap).
+
 ## Advanced notes
 
 - Multi-agent routing can use different workspaces per agent via `agents.entries.*.workspace`. See [Channel routing](/channels/channel-routing) for routing configuration.

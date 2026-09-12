@@ -6,8 +6,8 @@ import {
   acquireSessionMcpRuntime,
   materializeBundleMcpToolsForRun,
 } from "../../agent-bundle-mcp-tools.js";
+import { filterToolsByAgentProfile } from "../../agent-profiles.js";
 import { wrapToolWithAbortSignal } from "../../agent-tools.abort.js";
-import { filterLocalModelLeanTools } from "../../local-model-lean.js";
 import { recordAgentCleanupFailure } from "../../run-cleanup-timeout.js";
 import { normalizeAgentRuntimeTools } from "../../runtime-plan/tools.js";
 import { createRuntimeToolMatcher } from "../../tool-policy-match.js";
@@ -40,7 +40,8 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
     cronCreatorToolAllowlistCaptureRef,
     effectiveToolsAllow,
     inheritedToolAllowlist,
-    localModelLeanPreserveToolNames,
+    agentProfile,
+    agentProfilePreserveToolNames,
     runtimeCapabilityProfile,
     toolsEnabled,
     toolsRaw,
@@ -203,13 +204,17 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
     const normalizedBundledTools =
       filteredBundledTools.length > 0 ? normalizeTools(filteredBundledTools) : filteredBundledTools;
     const projectTools = (coreTools: typeof toolsRaw) => {
-      const projectedTools = filterLocalModelLeanTools({
+      const projectedTools = filterToolsByAgentProfile({
         tools: [...coreTools, ...normalizedBundledTools].map((tool) =>
           wrapToolWithAbortSignal(tool, params.preparedToolBase.toolAbortSignal),
         ),
         config: params.attempt.config,
         agentId: params.setup.sessionAgentId,
-        preserveToolNames: localModelLeanPreserveToolNames,
+        modelProvider: params.attempt.provider,
+        modelId: params.attempt.modelId,
+        modelSizeClass: params.attempt.model.modelSizeClass,
+        resolvedProfile: agentProfile,
+        preserveToolNames: agentProfilePreserveToolNames,
       });
       const schemaProjection = filterRuntimeCompatibleTools(projectedTools);
       if (cronCreatorToolAllowlistCaptureRef) {

@@ -2243,34 +2243,34 @@ describe("activateSetupInference", () => {
 
   it.each([
     {
-      name: "preserves the full tool surface for a verified local model",
+      name: "preserves automatic profile selection for a verified local model",
       providerId: "lmstudio",
       initialConfig: {} satisfies OpenClawConfig,
-      expectedLean: undefined,
+      expectedProfile: undefined,
     },
     {
-      name: "preserves an explicit localModelLean=false",
+      name: "preserves an explicit base Agent Profile",
       providerId: "lmstudio",
       initialConfig: {
-        agents: { defaults: { experimental: { localModelLean: false } } },
+        agents: { defaults: { agentProfileId: "openclaw/base" } },
       } satisfies OpenClawConfig,
-      expectedLean: false,
+      expectedProfile: "openclaw/base" as const,
     },
     {
-      name: "does not persist experimental defaults for a managed provider",
+      name: "does not persist Agent Profile defaults for a managed provider",
       providerId: "llama-cpp",
       initialConfig: {} satisfies OpenClawConfig,
-      expectedLean: undefined,
+      expectedProfile: undefined,
     },
-    ...[false, true].map((localModelLean) => ({
-      name: `preserves explicit lean=${localModelLean} for a managed provider`,
+    ...(["openclaw/base", "openclaw/small"] as const).map((agentProfileId) => ({
+      name: `preserves explicit profile=${agentProfileId} for a managed provider`,
       providerId: "llama-cpp",
       initialConfig: {
-        agents: { defaults: { experimental: { localModelLean } } },
+        agents: { defaults: { agentProfileId } },
       } satisfies OpenClawConfig,
-      expectedLean: localModelLean,
+      expectedProfile: agentProfileId,
     })),
-  ])("$name", async ({ providerId, initialConfig, expectedLean }) => {
+  ])("$name", async ({ providerId, initialConfig, expectedProfile }) => {
     const modelRef = `${providerId}/qwen-local`;
     const managed = providerId === "llama-cpp";
     const detect = vi.fn(async () => ({ modelRef, detail: "qwen-local at localhost" }));
@@ -2319,7 +2319,7 @@ describe("activateSetupInference", () => {
     const updateAuthStore = vi.fn();
     const runEmbeddedAgent = vi.fn<NonNullable<ActivateSetupInferenceDeps["runEmbeddedAgent"]>>(
       async (input) => {
-        expect(input.config?.agents?.defaults?.experimental?.localModelLean).toBe(expectedLean);
+        expect(input.config?.agents?.defaults?.agentProfileId).toBe(expectedProfile);
         const result = await successfulRunner(providerId, "qwen-local")(input);
         if (input.onAgentToolResult) {
           const contents = await fs.readFile(
@@ -2372,15 +2372,13 @@ describe("activateSetupInference", () => {
     expect(detect).not.toHaveBeenCalled();
     expect(prepare).toHaveBeenCalledOnce();
     expect(updateAuthStore).not.toHaveBeenCalled();
-    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBe(
-      expectedLean,
-    );
-    expect(configHarness.current().wizard ?? {}).not.toHaveProperty("localModelLeanAutoModel");
+    expect(configHarness.current().agents?.defaults?.agentProfileId).toBe(expectedProfile);
+    expect(configHarness.current().wizard ?? {}).not.toHaveProperty("agentProfileAutoModel");
     expect(configHarness.current()).toMatchObject({
       agents: {
         defaults: {
           model: modelRef,
-          ...(expectedLean !== undefined ? { experimental: { localModelLean: expectedLean } } : {}),
+          ...(expectedProfile !== undefined ? { agentProfileId: expectedProfile } : {}),
         },
       },
       models: {
@@ -2561,7 +2559,7 @@ describe("activateSetupInference", () => {
       agents: {
         defaults: {
           model: "lmstudio/qwen-local",
-          experimental: { localModelLean: true },
+          agentProfileId: "openclaw/small",
         },
       },
       models: {
@@ -2615,7 +2613,7 @@ describe("activateSetupInference", () => {
     expect(configHarness.current().models?.providers?.openai?.models).toEqual(
       sourceConfig.models.providers.openai.models,
     );
-    expect(configHarness.current().agents?.defaults?.experimental?.localModelLean).toBe(true);
+    expect(configHarness.current().agents?.defaults?.agentProfileId).toBe("openclaw/small");
   });
 
   it("rejects an existing route that changes after its live probe", async () => {

@@ -264,9 +264,7 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
         config: {
           agents: {
             defaults: {
-              experimental: {
-                localModelLean: true,
-              },
+              agentProfileId: "openclaw/small",
             },
           },
         } as OpenClawConfig,
@@ -324,9 +322,7 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
         config: {
           agents: {
             defaults: {
-              experimental: {
-                localModelLean: true,
-              },
+              agentProfileId: "openclaw/small",
             },
           },
         } as OpenClawConfig,

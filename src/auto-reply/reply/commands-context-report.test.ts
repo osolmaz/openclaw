@@ -31,6 +31,12 @@ function makeParams(
     storePath?: string;
     agentId?: string;
     currentTurn?: NonNullable<SessionEntry["systemPromptReport"]>["currentTurn"];
+    contextSerialization?: NonNullable<
+      NonNullable<SessionEntry["systemPromptReport"]>["contextSerialization"]
+    >;
+    workspaceContext?: NonNullable<
+      NonNullable<SessionEntry["systemPromptReport"]>["workspaceContext"]
+    >;
     nativeUnverified?: boolean;
   },
 ): HandleCommandsParams {
@@ -70,6 +76,10 @@ function makeParams(
           nonProjectContextChars: 500,
         },
         ...(options?.currentTurn ? { currentTurn: options.currentTurn } : {}),
+        ...(options?.contextSerialization
+          ? { contextSerialization: options.contextSerialization }
+          : {}),
+        ...(options?.workspaceContext ? { workspaceContext: options.workspaceContext } : {}),
         injectedWorkspaceFiles: options?.nativeUnverified
           ? [
               {
@@ -237,6 +247,75 @@ describe("buildContextReply", () => {
       "Compactable transcript: unavailable (no active transcript session)",
     );
     expect(result.text).toContain("Session tokens (cached): 900 total / ctx=8,192");
+  });
+
+  it("shows lean context serialization diagnostics without raw content", async () => {
+    const result = await buildContextReply(
+      makeParams("/context detail", false, {
+        contextSerialization: {
+          mode: "lean",
+          source: "agent-profile",
+          defaultChars: 1_049,
+          serializedChars: 287,
+          removedSessionMessages: 5,
+          deduplicatedMessages: 1,
+          providerInputTokens: 834,
+        },
+      }),
+    );
+
+    expect(result.text).toContain("Context serialization: lean (agent-profile)");
+    expect(result.text).toContain(
+      "Inbound context: 287 chars from 1,049 default chars; removed 5 transcript duplicate(s) and 1 duplicate history item(s)",
+    );
+    expect(result.text).toContain("Provider input tokens (turn): 834");
+    expect(result.text).not.toContain("private message");
+  });
+
+  it("shows Agent Profile workspace allocation without file contents", async () => {
+    const result = await buildContextReply(
+      makeParams("/context detail", false, {
+        workspaceContext: {
+          totalMaxChars: 8_000,
+          operatorMaxChars: 20_000,
+          operatorTotalMaxChars: 60_000,
+          rawChars: 10_000,
+          injectedChars: 8_000,
+          truncatedChars: 2_000,
+          entries: [
+            {
+              section: "identity",
+              kind: "canonical",
+              path: "/workspace/IDENTITY.md",
+              missing: false,
+              overflow: "error",
+              rawChars: 64,
+              effectiveMaxChars: 1_024,
+              injectedChars: 64,
+              truncated: false,
+              causes: [],
+            },
+            {
+              section: "agents",
+              kind: "canonical",
+              path: "/workspace/AGENTS.md",
+              missing: false,
+              overflow: "truncate",
+              rawChars: 9_936,
+              effectiveMaxChars: 4_000,
+              injectedChars: 7_936,
+              truncated: true,
+              causes: ["aggregate-limit"],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.text).toContain("Agent Profile workspace context: 8,000 / 8,000 chars");
+    expect(result.text).toContain("identity: 64 / 64 chars (error)");
+    expect(result.text).toContain("agents: 7,936 / 9,936 chars (truncate; aggregate-limit)");
+    expect(result.text).not.toContain("Name: Bob");
   });
 
   it("reports compactable real conversation messages from the active transcript", async () => {
