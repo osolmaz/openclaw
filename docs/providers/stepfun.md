@@ -19,8 +19,10 @@ Standard and Step Plan are **separate providers** with different endpoints and m
 
 ```bash
 openclaw plugins install @openclaw/stepfun-provider
-openclaw gateway restart
 ```
+
+Installation applies to a running Gateway automatically; otherwise it takes effect
+on the next startup. See [Apply changes and inspect](/plugins/manage-plugins#apply-changes-and-inspect).
 
 ## Region and endpoint overview
 
@@ -77,7 +79,8 @@ Step Plan (`stepfun-plan`):
       </Step>
       <Step title="Non-interactive alternative">
         ```bash
-        openclaw onboard --auth-choice stepfun-standard-api-key-intl \
+        openclaw onboard --non-interactive --accept-risk --skip-health \
+          --auth-choice stepfun-standard-api-key-intl \
           --stepfun-api-key "$STEPFUN_API_KEY"
         ```
       </Step>
@@ -116,7 +119,8 @@ Step Plan (`stepfun-plan`):
       </Step>
       <Step title="Non-interactive alternative">
         ```bash
-        openclaw onboard --auth-choice stepfun-plan-api-key-intl \
+        openclaw onboard --non-interactive --accept-risk --skip-health \
+          --auth-choice stepfun-plan-api-key-intl \
           --stepfun-api-key "$STEPFUN_API_KEY"
         ```
       </Step>

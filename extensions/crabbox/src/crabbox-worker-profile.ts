@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import {
   WorkerProviderError,
@@ -8,8 +7,6 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import { normalizeOptionalString as nonEmptyString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { CRABBOX_HEARTBEAT_TIMEOUT_MS } from "./crabbox-worker-timeouts.js";
-
-export { nonEmptyString };
 
 const PROFILE_KEYS = new Set([
   "binary",
@@ -76,10 +73,9 @@ export function parseCrabboxOperatingSystem(value: unknown): CrabboxOperatingSys
     return "linux";
   }
   const target = nonEmptyString(value);
-  for (const supported of CRABBOX_ENROLLABLE_TARGETS) {
-    if (target === supported) {
-      return supported;
-    }
+  const supported = CRABBOX_ENROLLABLE_TARGETS.find((os) => os === target);
+  if (supported) {
+    return supported;
   }
   throw new WorkerProviderError(
     `Crabbox target must be ${CRABBOX_ENROLLABLE_TARGETS.join(" or ")}`,
@@ -93,8 +89,6 @@ export type CrabboxMachineShape = Readonly<{
   cpu?: number;
   memoryGb?: number;
 }>;
-
-type IsExecutable = (candidate: string) => boolean;
 
 export const CRABBOX_WORKER_PROVIDER_ID = "crabbox";
 
@@ -168,17 +162,15 @@ export function parseCrabboxProfile(profile: Readonly<Record<string, unknown>>):
     profile.idleTimeout,
     "idleTimeout",
   );
-  const binaryValue = profile.binary;
-  const binary = binaryValue === undefined ? undefined : nonEmptyString(binaryValue);
-  if (binaryValue !== undefined && !binary) {
+  const binary = nonEmptyString(profile.binary);
+  if (profile.binary !== undefined && !binary) {
     throw new WorkerProviderError("Crabbox profile binary must be a non-empty string");
   }
   if (binary && !path.isAbsolute(binary)) {
     throw new WorkerProviderError("Crabbox profile binary must be an absolute path");
   }
-  const setupValue = profile.setup;
-  const setup = setupValue === undefined ? undefined : nonEmptyString(setupValue);
-  if (setupValue !== undefined && !setup) {
+  const setup = nonEmptyString(profile.setup);
+  if (profile.setup !== undefined && !setup) {
     throw new WorkerProviderError("Crabbox profile setup must be a non-empty command string");
   }
   let setupEnv: string[] | undefined;
@@ -264,19 +256,18 @@ export function resolveCrabboxWarmImageProfile(
   machineClass = profile.class,
   target = profile.target,
 ) {
-  if (target !== "linux" && profile.desktop) {
-    throw new WorkerProviderError("Crabbox desktop is Linux only");
-  }
-  if (target !== "linux" && profile.warmImage === true) {
-    throw new WorkerProviderError("Crabbox warm images are Linux only");
+  if (target === "windows/wsl2" && profile.desktop) {
+    throw new WorkerProviderError(
+      "Crabbox WSL2 does not support desktops; select native Windows for a desktop viewer",
+    );
   }
   return {
     ...profile,
     class: machineClass,
     target,
     warmImage:
-      profile.warmImage ??
-      (target === "linux" && machineClass !== undefined && !profile.setupEnv?.length),
+      target === "linux" &&
+      (profile.warmImage ?? (machineClass !== undefined && !profile.setupEnv?.length)),
   };
 }
 
@@ -399,6 +390,7 @@ export function buildCrabboxAllocationArgs(
     "public",
     "--tailscale=false",
     ...(profile.class ? ["--class", profile.class] : []),
+    ...(profile.target === "linux" ? ["--target", "linux"] : []),
     ...(profile.target === "windows/wsl2" ? ["--target", "windows", "--windows-mode", "wsl2"] : []),
     ...(profile.target === "windows/normal"
       ? ["--target", "windows", "--windows-mode", "normal"]
@@ -415,75 +407,12 @@ export function buildCrabboxAllocationArgs(
     "--keep=true",
   ];
   if (profile.desktop) {
-    args.push("--desktop", "--browser", "--desktop-env", "xfce");
+    args.push("--desktop");
+    if (profile.target === "linux") {
+      args.push("--browser", "--desktop-env", "xfce");
+    }
   }
   return args;
-}
-
-function defaultIsExecutable(candidate: string, platform: NodeJS.Platform): boolean {
-  try {
-    if (!fs.statSync(candidate).isFile()) {
-      return false;
-    }
-    fs.accessSync(candidate, platform === "win32" ? fs.constants.F_OK : fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function binaryCandidates(base: string, platform: NodeJS.Platform): string[] {
-  return platform === "win32"
-    ? [".exe", ".cmd", ".bat", ".com", ""].map((suffix) => `${base}${suffix}`)
-    : [base];
-}
-
-export function resolveCrabboxBinary(params: {
-  explicit?: string;
-  isExecutable?: IsExecutable;
-  openclawRoot: string;
-  pathEnv?: string;
-  platform?: NodeJS.Platform;
-}): string {
-  if (params.explicit) {
-    return params.explicit;
-  }
-  return findCrabboxBinary(params) ?? "crabbox";
-}
-
-export function findCrabboxBinary(params: {
-  explicit?: string;
-  isExecutable?: IsExecutable;
-  openclawRoot: string;
-  pathEnv?: string;
-  platform?: NodeJS.Platform;
-}): string | undefined {
-  const platform = params.platform ?? process.platform;
-  const isExecutable =
-    params.isExecutable ?? ((candidate) => defaultIsExecutable(candidate, platform));
-  if (params.explicit) {
-    return isExecutable(params.explicit) ? params.explicit : undefined;
-  }
-  const siblingBase = path.resolve(params.openclawRoot, "../crabbox/bin/crabbox");
-  for (const candidate of binaryCandidates(siblingBase, platform)) {
-    if (isExecutable(candidate)) {
-      return candidate;
-    }
-  }
-  const delimiter = platform === "win32" ? ";" : ":";
-  const executableNames = binaryCandidates("crabbox", platform);
-  for (const directory of (params.pathEnv ?? "").split(delimiter)) {
-    if (!directory) {
-      continue;
-    }
-    for (const name of executableNames) {
-      const candidate = path.resolve(directory, name);
-      if (isExecutable(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return undefined;
 }
 
 export function resolveOpenClawRoot(pluginRoot: string | undefined): string {
@@ -503,6 +432,14 @@ export function resolveOpenClawRoot(pluginRoot: string | undefined): string {
 
 export function operationSlug(operationId: string): string {
   return `openclaw-${createHash("sha256").update(operationId).digest("hex").slice(0, 32)}`;
+}
+
+const LEASE_ID_PATTERN = /^(?:cbx_|tbx_)[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
+
+export function assertCrabboxLeaseId(leaseId: string): void {
+  if (!LEASE_ID_PATTERN.test(leaseId)) {
+    throw new Error("Crabbox lease id is invalid");
+  }
 }
 
 export function operationLeaseId(operationId: string): string {

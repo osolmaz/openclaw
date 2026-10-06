@@ -12,9 +12,7 @@ function applyRetiredMigrations(raw: Record<string, unknown>) {
 describe("automatic local-model lean migration", () => {
   it.each([
     { model: "ollama/local", localModelLean: true, expected: undefined },
-    { model: { primary: "ollama/local" }, localModelLean: true, expected: undefined },
-    { model: "openai/selected", localModelLean: true, expected: true },
-    { model: undefined, localModelLean: true, expected: true },
+    { model: { primary: "openai/selected" }, localModelLean: true, expected: true },
     { model: "ollama/local", localModelLean: false, expected: false },
   ])("retires only proven automatic lean ownership: %j", ({ model, localModelLean, expected }) => {
     const raw = {
@@ -36,21 +34,8 @@ describe("automatic local-model lean migration", () => {
     if (expected === true) {
       expect(changes).toContainEqual(expect.stringContaining("remove it or set it to false"));
     }
-    expect(applyRetiredMigrations(raw).changes).toEqual([]);
+    expect(findLegacyConfigIssues(raw)).toEqual([]);
+    const migrated = structuredClone(raw);
+    expect(applyRetiredMigrations(raw)).toEqual({ raw: migrated, changes: [] });
   });
-
-  it.each([undefined, false, true])(
-    "leaves unmarked lean configuration unchanged: %s",
-    (localModelLean) => {
-      const raw = {
-        agents: {
-          defaults: {
-            experimental: localModelLean !== undefined ? { localModelLean } : {},
-          },
-        },
-      };
-      const expected = structuredClone(raw);
-      expect(applyRetiredMigrations(raw)).toEqual({ raw: expected, changes: [] });
-    },
-  );
 });

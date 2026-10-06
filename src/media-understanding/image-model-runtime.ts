@@ -28,19 +28,10 @@ import { prepareProviderRuntimeAuth } from "../plugins/provider-runtime.runtime.
 import { withPluginRuntimeGenerationScope } from "../plugins/runtime/generation-scope.js";
 import type { ImageDescriptionRequest } from "./types.js";
 
-type ImageRuntimeParams = {
-  cfg: ImageDescriptionRequest["cfg"];
-  agentDir: string;
-  provider: string;
-  model: string;
-  profile?: string;
-  preferredProfile?: string;
-  signal?: AbortSignal;
-  authStore?: ImageDescriptionRequest["authStore"];
-  agentId?: string;
-  workspaceDir?: string;
-  preparedModelRuntime?: ImageDescriptionRequest["preparedModelRuntime"];
-};
+type ImageRuntimeParams = Omit<
+  ImageDescriptionRequest,
+  "buffer" | "fileName" | "mime" | "prompt" | "maxTokens" | "timeoutMs"
+>;
 
 type ResolvedImageRuntimeContext = {
   cfg: ImageRuntimeParams["cfg"];
@@ -53,8 +44,7 @@ type PreparedImageRuntime = {
   model: Model;
 };
 
-type ImageRuntimeResources = {
-  release: () => void;
+type ImageRuntimeResources = AsyncDisposable & {
   assertResourcesOpen?: () => void;
 };
 
@@ -157,6 +147,8 @@ async function prepareResolvedImageRuntime(
       params.agentDir,
       params.cfg,
       {
+        abortSignal: params.signal,
+        modelIdSource: "selected",
         authStorage,
         modelRegistry,
         skipAgentDiscovery: true,
@@ -221,7 +213,6 @@ export async function resolveImageRuntime(
   params: ImageRuntimeParams,
   onAcquired: (resources: ImageRuntimeResources) => void,
 ): Promise<PreparedImageRuntime> {
-  const resolvedRef = normalizeModelRef(params.provider, params.model);
   const workspaceDir =
     params.workspaceDir ??
     (params.agentId ? resolveAgentWorkspaceDir(params.cfg ?? {}, params.agentId) : undefined);
@@ -231,11 +222,21 @@ export async function resolveImageRuntime(
     ...(params.preferredProfile ? { preferredProfile: params.preferredProfile } : {}),
   };
   const suppliedSnapshot = params.preparedModelRuntime as PreparedModelRuntimeSnapshot | undefined;
+  let resolvedRef = suppliedSnapshot
+    ? normalizeModelRef(params.provider, params.model, {
+        manifestPlugins: suppliedSnapshot.metadataSnapshot,
+      })
+    : { provider: params.provider, model: params.model };
   const suppliedClaim = suppliedSnapshot
     ? retainPreparedModelRuntimeSnapshotResources(suppliedSnapshot)
     : undefined;
   const preparedRuntimeLease = suppliedSnapshot
-    ? { snapshot: suppliedSnapshot, release: () => suppliedClaim?.release() }
+    ? {
+        snapshot: suppliedSnapshot,
+        async [Symbol.asyncDispose]() {
+          await suppliedClaim?.release();
+        },
+      }
     : await acquireAgentRunPreparedModelRuntime(
         {
           agentDir: params.agentDir,
@@ -243,20 +244,28 @@ export async function resolveImageRuntime(
           config: params.cfg ?? {},
           ...(runtimeParams.workspaceDir ? { workspaceDir: runtimeParams.workspaceDir } : {}),
           loadRuntimePlugins: true,
-          runtimePluginSelections: [
-            {
-              provider: resolvedRef.provider,
-              modelId: resolvedRef.model,
-              ...(params.agentId ? { agentId: params.agentId } : {}),
-            },
-          ],
         },
         // The request already chose a model; full inventory discovery must stay outside setup.
-        { catalogMode: "static", abortSignal: params.signal },
+        {
+          catalogMode: "static",
+          abortSignal: params.signal,
+          deriveRuntimePluginSelections: ({ metadataSnapshot }) => {
+            resolvedRef = normalizeModelRef(params.provider, params.model, {
+              manifestPlugins: metadataSnapshot,
+            });
+            return [
+              {
+                provider: resolvedRef.provider,
+                modelId: resolvedRef.model,
+                ...(params.agentId ? { agentId: params.agentId } : {}),
+              },
+            ];
+          },
+        },
       );
   // The operation owns release before setup can leave asynchronous cleanup behind.
   onAcquired({
-    release: preparedRuntimeLease.release,
+    [Symbol.asyncDispose]: () => preparedRuntimeLease[Symbol.asyncDispose](),
     ...(suppliedClaim ? { assertResourcesOpen: suppliedClaim.assertOpen } : {}),
   });
   params.signal?.throwIfAborted();
@@ -275,6 +284,8 @@ export async function resolveImageRuntime(
     Pick<NonNullable<Parameters<typeof resolveModelAsync>[4]>, "authStorage" | "modelRegistry">
   >;
   const resolveOptions = {
+    abortSignal: params.signal,
+    modelIdSource: "selected" as const,
     allowBundledStaticCatalogFallback: true,
     ...preparedStores,
     preparedModelRuntime: preparedRuntime,

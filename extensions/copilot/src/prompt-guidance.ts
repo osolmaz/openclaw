@@ -20,6 +20,7 @@ export function buildCopilotPromptGuidance(params: {
   attempt: AttemptParamsLike;
   callableToolNames: Iterable<string>;
   agentProfileSystemPrompt?: string;
+  toolSchemaDirectoryPrompt?: string;
   workspaceBootstrapInstructions?: string;
   requireExplicitMessageTarget?: boolean;
 }): string | undefined {
@@ -52,6 +53,7 @@ export function buildCopilotPromptGuidance(params: {
       : undefined;
   const sections = [
     COPILOT_HARNESS_IDENTITY,
+    params.toolSchemaDirectoryPrompt,
     callableTools.has(SKILL_WORKSHOP_TOOL_NAME)
       ? buildSkillWorkshopPromptSection().join("\n")
       : undefined,

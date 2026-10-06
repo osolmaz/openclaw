@@ -1,6 +1,7 @@
 // @vitest-environment node
 import type { ReactiveControllerHost } from "lit";
 import { afterEach, expect, it, vi } from "vitest";
+import { createDeferred } from "../../../../test/helpers/promise.ts";
 import { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { PluginDiscoveryEntry, PluginDiscoveryResult } from "../../lib/plugins/index.ts";
 import { PluginDiscoveryController } from "./plugin-discovery-controller.ts";
@@ -27,7 +28,7 @@ function entry(index: number, imageUrl?: string): PluginDiscoveryEntry {
 }
 
 function setup(
-  responses: PluginDiscoveryResult[],
+  responses: Array<PluginDiscoveryResult | Promise<PluginDiscoveryResult>>,
   responder?: (method: string, params: unknown) => Promise<unknown>,
 ) {
   const host = {
@@ -50,345 +51,493 @@ function setup(
     }
     return response;
   });
-  const onEntriesChanged = vi.fn();
-  const scope = { client, epoch: 0 };
   const controller = new PluginDiscoveryController(host, {
     getClient: () => client,
     isConnected: () => true,
-    capture: () => scope,
-    isCurrent: (candidate) => candidate === scope,
-    onEntriesChanged,
   });
-  return { controller, onEntriesChanged, request };
+  return { controller, request };
 }
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-it("switches filtered tabs to All when starting a unified search", async () => {
+it("loads category navigation without waiting for catalog cards", async () => {
+  const browse = createDeferred<PluginDiscoveryResult>();
+  const categories = [
+    { slug: "memory", label: "Memory", description: "Memory", icon: "brain", order: 0 },
+  ];
+  const { controller, request } = setup([], async (method) =>
+    method === "plugins.catalog.categories" ? { categories } : browse.promise,
+  );
+  const loading = controller.refresh();
+  await controller.ensureCategories();
+  expect(request).toHaveBeenCalledWith("plugins.catalog.categories", {}, expect.anything());
+  expect(controller.categories).toEqual(categories);
+  expect(controller.loading).toBe(true);
+  browse.resolve({ items: [] });
+  await loading;
+  expect(controller.categories).toEqual(categories);
+});
+
+it("settles empty categories, deduplicates warm loads, and retries errors explicitly", async () => {
+  let fail = true;
+  const { controller, request } = setup([], async () => {
+    if (fail) {
+      throw new Error("Categories unavailable");
+    }
+    return { categories: [] };
+  });
+  await controller.ensureCategories();
+  expect(controller.categoriesLoading).toBe(false);
+  expect(controller.categoriesError).toContain("Categories unavailable");
+  await controller.ensureCategories();
+  expect(request).toHaveBeenCalledOnce();
+  fail = false;
+  await controller.ensureCategories(true);
+  expect(controller.categoriesError).toBeNull();
+  expect(controller.categoriesLoading).toBe(false);
+  await controller.ensureCategories();
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+it("uses overview categories when they arrive first without accepting a late category reply", async () => {
+  const pending = createDeferred<{ categories: never[] }>();
+  const categories = [
+    { slug: "memory", label: "Memory", description: "Memory", icon: "brain", order: 0 },
+  ];
+  const { controller } = setup([], async (method) =>
+    method === "plugins.catalog.categories" ? pending.promise : { items: [], categories },
+  );
+  const loading = controller.ensureCategories();
+  expect(controller.categoriesLoading).toBe(true);
+  await controller.refresh();
+  expect(controller.categoriesLoading).toBe(false);
+  expect(controller.categories).toEqual(categories);
+  pending.resolve({ categories: [] });
+  await loading;
+  expect(controller.categories).toEqual(categories);
+});
+
+it("discards category navigation and late responses across connection invalidation", async () => {
+  const pending = createDeferred<{
+    categories: { slug: string; label: string; description: string; icon: string; order: number }[];
+  }>();
+  const { controller } = setup([], async () => pending.promise);
+  const loading = controller.ensureCategories();
+  controller.invalidate();
+  pending.resolve({
+    categories: [{ slug: "old", label: "Old", description: "Old", icon: "brain", order: 0 }],
+  });
+  await loading;
+  expect(controller.categories).toEqual([]);
+  expect(controller.categoriesLoading).toBe(false);
+});
+
+it("populates the grouped home page and keeps it visible during a refresh", async () => {
+  const featured = entry(1);
+  featured.catalog.featured = true;
+  featured.catalog.featuredRank = 0;
+  const trending = entry(2);
+  trending.catalog.trending = true;
+  trending.catalog.trendingRank = 0;
+  const category = entry(3);
+  category.catalog.categories = ["memory"];
+  const categories = [
+    { slug: "memory", label: "Memory", description: "Memory", icon: "database", order: 0 },
+  ];
+  const refresh = createDeferred<PluginDiscoveryResult>();
+  const { controller, request } = setup([
+    { items: [featured, trending, category], categories },
+    refresh.promise,
+  ]);
+
+  await controller.refresh();
+
+  expect(controller.categories).toEqual(categories);
+  expect(controller.featured.map((item) => item.id)).toEqual([featured.id]);
+  expect(controller.trending.map((item) => item.id)).toEqual([trending.id]);
+  expect(request).toHaveBeenCalledOnce();
+  expect(request).toHaveBeenCalledWith(
+    "plugins.catalog.browse",
+    { intent: "all", pageSize: 100 },
+    expect.anything(),
+  );
+
+  const loading = controller.refresh();
+  expect(controller.loading).toBe(false);
+  expect(controller.featured).toEqual([featured]);
+  expect(controller.trending).toEqual([trending]);
+  refresh.resolve({ items: [category], categories });
+  await loading;
+  expect(controller.result?.items).toEqual([category]);
+  expect(controller.featured).toEqual([]);
+  expect(controller.trending).toEqual([]);
+});
+
+it("preserves home navigation when a category completes during the search debounce", async () => {
   vi.useFakeTimers();
-  const { controller, request } = setup([{ items: [] }]);
-  controller.intent = "official";
+  const featured = entry(1);
+  featured.catalog.featured = true;
+  const trending = entry(2);
+  trending.catalog.trending = true;
+  const categories = [
+    { slug: "channels", label: "Channels", description: "Channels", icon: "globe", order: 0 },
+  ];
+  const category = createDeferred<PluginDiscoveryResult>();
+  const search = createDeferred<PluginDiscoveryResult>();
+  const categoryItems = [entry(3)];
+  const searchItems = [entry(4)];
+  const { controller, request } = setup([
+    { items: [featured, trending], categories },
+    category.promise,
+    search.promise,
+  ]);
+  await controller.refresh();
+  controller.selectCategory("channels");
+  expect(controller.loading).toBe(true);
+  controller.updateQuery("calendar");
+  expect(controller.loading).toBe(true);
+
+  category.resolve({ items: categoryItems });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(request.mock.lastCall?.[1]).toMatchObject({ category: "channels" });
+  expect(controller.result?.items).toEqual(categoryItems);
+  expect(controller.loading).toBe(true);
+  expect.soft(controller.categories).toEqual(categories);
+  expect.soft(controller.featured).toEqual([featured]);
+  expect.soft(controller.trending).toEqual([trending]);
+
+  await vi.advanceTimersByTimeAsync(250);
+  expect(request.mock.lastCall?.[1]).toMatchObject({ query: "calendar" });
+  expect(controller.loading).toBe(true);
+  search.resolve({ items: searchItems });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(controller.loading).toBe(false);
+  expect(controller.result?.items).toEqual(searchItems);
+  expect.soft(controller.categories).toEqual(categories);
+  expect.soft(controller.featured).toEqual([featured]);
+  expect.soft(controller.trending).toEqual([trending]);
+});
+
+it("does not expose continuation for search results", async () => {
+  vi.useFakeTimers();
+  const { controller } = setup([{ items: [entry(1)], nextCursor: "unsupported-search-page" }]);
 
   controller.updateQuery("memory");
   await vi.runAllTimersAsync();
 
+  expect(controller.result).toEqual({ items: [entry(1)] });
+});
+
+it("counts only settled manual searches across refresh, filters and connection invalidation", async () => {
+  vi.useFakeTimers();
+  const { controller, request } = setup([], async () => ({ items: [entry(1)] }));
+  controller.intent = "official";
+  controller.updateQuery("m");
   expect(controller.intent).toBe("all");
-  expect(request).toHaveBeenCalledWith(
-    "plugins.catalog.browse",
-    expect.objectContaining({ intent: "all", query: "memory" }),
-    expect.anything(),
-  );
-});
+  await vi.advanceTimersByTimeAsync(250);
+  expect(request.mock.lastCall?.[1]).not.toHaveProperty("searchSource");
+  request.mockClear();
 
-it("hydrates grouped shelves from each category's top results", async () => {
-  const globalFinance = entry(0);
-  globalFinance.catalog.categories = ["finance-payments"];
-  const financeSecond = entry(1);
-  financeSecond.catalog.categories = [];
-  financeSecond.catalog.official = true;
-  const agentMail = entry(2);
-  agentMail.catalog.categories = [];
-  const { controller, request } = setup([], async (method, params) => {
-    if (method === "plugins.catalog.categories") {
-      return {
-        categories: [
-          {
-            slug: "finance-payments",
-            label: "Finance & payments",
-            description: "Finance",
-            icon: "package",
-            order: 0,
-          },
-          {
-            slug: "inbox-collaboration",
-            label: "Inbox & collaboration",
-            description: "Inbox",
-            icon: "package",
-            order: 1,
-          },
-        ],
-      };
-    }
-    if (method !== "plugins.catalog.browse") {
-      throw new Error(`unexpected method: ${method}`);
-    }
-    const category = (params as { category?: string }).category;
-    if (!category) {
-      return { items: [globalFinance] };
-    }
-    return {
-      items:
-        category === "finance-payments" ? [globalFinance, financeSecond, agentMail] : [agentMail],
-    };
+  controller.updateQuery("mem");
+  await vi.advanceTimersByTimeAsync(200);
+  controller.updateQuery("memory");
+  await vi.advanceTimersByTimeAsync(249);
+  expect(request).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(request).toHaveBeenCalledOnce();
+  expect(request.mock.lastCall?.[1]).toEqual({
+    intent: "all",
+    query: "memory",
+    pageSize: 100,
+    searchSource: "openclaw-control-ui",
   });
+  expect(controller.result?.items).toEqual([entry(1)]);
 
+  for (const query of ["memory ", " memory", "memory"]) {
+    request.mockClear();
+    controller.updateQuery(query);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(request).not.toHaveBeenCalled();
+    expect(controller.result?.items).toEqual([entry(1)]);
+  }
+
+  request.mockClear();
   await controller.refresh();
-  await controller.refreshCategories();
+  controller.selectCategory("memory");
+  await vi.advanceTimersByTimeAsync(0);
+  controller.selectIntent("official");
+  await vi.advanceTimersByTimeAsync(0);
+  controller.updateQuery("");
+  await vi.advanceTimersByTimeAsync(250);
+  for (const [, params] of request.mock.calls) {
+    expect(params).not.toHaveProperty("searchSource");
+  }
 
-  expect(controller.result?.items.map((item) => item.id)).toEqual([
-    financeSecond.id,
-    globalFinance.id,
-    agentMail.id,
-  ]);
-  expect(
-    controller.result?.items.find((item) => item.id === financeSecond.id)?.catalog.categories,
-  ).toContain("finance-payments");
-  expect(
-    controller.result?.items.find((item) => item.id === agentMail.id)?.catalog.categories,
-  ).toEqual(["finance-payments", "inbox-collaboration"]);
-  expect(request).toHaveBeenCalledWith(
-    "plugins.catalog.browse",
-    { intent: "all", category: "finance-payments", pageSize: 8 },
-    expect.anything(),
-  );
-  expect(request).toHaveBeenCalledWith(
-    "plugins.catalog.browse",
-    { intent: "all", category: "inbox-collaboration", pageSize: 8 },
-    expect.anything(),
-  );
+  request.mockClear();
+  controller.updateQuery("calendar");
+  controller.invalidate();
+  await vi.advanceTimersByTimeAsync(250);
+  expect(request).not.toHaveBeenCalled();
+  await controller.refresh();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(request.mock.lastCall?.[1]).toEqual({ intent: "all", query: "calendar", pageSize: 100 });
+  request.mockClear();
+  controller.updateQuery("notion");
+  controller.disconnect();
+  await vi.advanceTimersByTimeAsync(250);
+  expect(request).not.toHaveBeenCalled();
 });
 
-it("automatically loads every available catalog cursor page", async () => {
-  const matches = Array.from({ length: 101 }, (_, index) => entry(index));
+it("restores the loaded overview immediately when clearing search and retires late results", async () => {
+  vi.useFakeTimers();
+  const overview = entry(1);
+  overview.catalog.featured = true;
+  overview.catalog.trending = true;
+  const lateSearch = createDeferred<PluginDiscoveryResult>();
+  const { controller, request } = setup([
+    { items: [overview] },
+    { items: [entry(2)] },
+    lateSearch.promise,
+  ]);
+  await controller.refresh();
+  controller.updateQuery("test");
+  await vi.advanceTimersByTimeAsync(250);
+  controller.updateQuery("memory");
+  await vi.advanceTimersByTimeAsync(250);
+  controller.updateQuery("");
+
+  expect(controller.loading).toBe(false);
+  expect(controller.result?.items).toEqual([overview]);
+  lateSearch.resolve({ items: [entry(3)] });
+  await vi.advanceTimersByTimeAsync(250);
+  expect(controller.result?.items).toEqual([overview]);
+  expect(request).toHaveBeenCalledTimes(3);
+});
+
+it.each(["category", "featured"] as const)(
+  "restores All when clearing a search before debounce from %s",
+  async (filter) => {
+    vi.useFakeTimers();
+    const { controller, request } = setup([{ items: [entry(2)] }, { items: [entry(1)] }]);
+    if (filter === "category") {
+      controller.category = "memory";
+    } else {
+      controller.intent = filter;
+    }
+    await controller.refresh();
+    controller.updateQuery("test");
+    controller.updateQuery("");
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(controller.intent).toBe("all");
+    expect(controller.category).toBeNull();
+    expect(controller.result?.items).toEqual([entry(1)]);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.lastCall?.[1]).toEqual({ intent: "all", pageSize: 100 });
+  },
+);
+
+it.each(["refresh", "disconnect", "invalidate"] as const)(
+  "reloads overview installation facts after %s while searching",
+  async (boundary) => {
+    vi.useFakeTimers();
+    const available = entry(1);
+    available.catalog.featured = true;
+    available.catalog.trending = true;
+    const installed: PluginDiscoveryEntry = {
+      ...available,
+      local: {
+        ...available.local,
+        installed: true,
+        enabled: true,
+        state: "enabled",
+        action: "manage",
+      },
+    };
+    const search = { items: [entry(2)] };
+    const freshOverview = createDeferred<PluginDiscoveryResult>();
+    const { controller, request } = setup([
+      { items: [available] },
+      search,
+      ...(boundary === "refresh" ? [search] : []),
+      freshOverview.promise,
+    ]);
+    await controller.refresh();
+    controller.updateQuery("memory");
+    await vi.advanceTimersByTimeAsync(250);
+
+    await controller[boundary]();
+    request.mockClear();
+    controller.updateQuery("");
+
+    expect(controller.loading).toBe(true);
+    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.lastCall?.[1]).toEqual({ intent: "all", pageSize: 100 });
+    freshOverview.resolve({ items: [installed] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.result?.items).toEqual([installed]);
+    expect(controller.featured).toEqual([installed]);
+    expect(controller.trending).toEqual([installed]);
+    expect(controller.loading).toBe(false);
+  },
+);
+
+it("retries a degraded overview when returning from search", async () => {
+  vi.useFakeTimers();
+  const incomplete = entry(1);
+  const recovered = entry(2);
+  const recovery = createDeferred<PluginDiscoveryResult>();
+  const { controller, request } = setup([
+    { items: [incomplete], remoteError: "Catalog unavailable" },
+    { items: [entry(3)] },
+    recovery.promise,
+  ]);
+  await controller.refresh();
+  expect(controller.remoteError).toBe("Catalog unavailable");
+  controller.updateQuery("memory");
+  await vi.advanceTimersByTimeAsync(250);
+  request.mockClear();
+  controller.updateQuery("");
+
+  expect(controller.loading).toBe(true);
+  expect(request).toHaveBeenCalledOnce();
+  recovery.resolve({ items: [incomplete, recovered] });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(controller.result?.items).toEqual([incomplete, recovered]);
+  expect(controller.remoteError).toBeNull();
+  expect(controller.loading).toBe(false);
+});
+
+it("loads one bounded page initially and continues only after explicit expansion", async () => {
+  const promotedMatch = entry(100);
+  promotedMatch.catalog.official = true;
+  promotedMatch.catalog.downloads = 10_000;
+  const matches = [...Array.from({ length: 100 }, (_, index) => entry(index)), promotedMatch];
   const { controller, request } = setup([
     { items: matches.slice(0, 100), nextCursor: "catalog-page-2" },
     { items: matches.slice(100) },
   ]);
+  controller.category = "tools";
 
   await controller.refresh();
+  expect(controller.result?.items).toHaveLength(100);
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(request).toHaveBeenCalledWith(
+    "plugins.catalog.browse",
+    { intent: "all", category: "tools", pageSize: 100 },
+    expect.anything(),
+  );
+
+  await controller.loadMore();
+
   expect(controller.result?.items).toHaveLength(101);
+  expect(controller.result?.items[0]?.id).toBe(promotedMatch.id);
   expect(request).toHaveBeenCalledTimes(2);
   expect(request).toHaveBeenLastCalledWith(
     "plugins.catalog.browse",
-    { intent: "all", cursor: "catalog-page-2", pageSize: 100 },
+    { intent: "all", category: "tools", cursor: "catalog-page-2", pageSize: 100 },
     expect.anything(),
   );
 });
 
-it("sorts a selected category after reconciling every cursor page", async () => {
-  const installed = entry(0);
-  installed.catalog.name = "Installed placeholder";
-  delete installed.catalog.family;
-  installed.local.installed = true;
-  installed.local.action = "manage";
-  const popular = entry(1);
-  popular.catalog.name = "Popular official plugin";
-  popular.catalog.official = true;
-  popular.catalog.downloads = 10_000;
-  const { controller } = setup([
-    { items: [installed], nextCursor: "catalog-page-2" },
-    { items: [popular] },
-  ]);
-
-  controller.category = "models";
-  await controller.refresh();
-
-  expect(controller.result?.items.map((item) => item.catalog.name)).toEqual([
-    "Popular official plugin",
-    "Installed placeholder",
-  ]);
-});
-
-it("deduplicates identities across cursor pages while retaining catalog and local facts", async () => {
-  const installed = entry(0);
-  installed.id = "shared-plugin";
-  installed.catalog.name = "Bundled placeholder";
-  installed.catalog.summary = "Bundled placeholder summary";
-  delete installed.catalog.family;
-  installed.local.pluginId = "shared-plugin";
-  installed.local.installed = true;
-  installed.local.state = "enabled";
-  installed.local.action = "manage";
-  const published = entry(1, "https://cdn.example/plugin.png");
-  published.id = installed.id;
-  published.catalog.name = "Published plugin";
-  published.catalog.summary = "Published plugin summary";
+it("replaces a first-page local placeholder with later published Media metadata", async () => {
+  const placeholder = entry(1);
+  delete placeholder.catalog.family;
+  placeholder.catalog.categories = ["models", "media"];
+  const published = entry(1);
+  published.catalog.categories = [...placeholder.catalog.categories];
+  published.catalog.author = "openclaw";
   published.catalog.official = true;
-  published.catalog.author = "publisher";
-  published.catalog.downloads = 42;
+  published.catalog.downloads = 10_000;
   const { controller } = setup([
-    { items: [installed], nextCursor: "catalog-page-2" },
+    { items: [placeholder], nextCursor: "catalog-page-2" },
     { items: [published] },
   ]);
+  controller.category = "media";
 
   await controller.refresh();
+  await controller.loadMore();
 
-  expect(controller.result?.items).toHaveLength(1);
-  expect(controller.result?.items[0]).toMatchObject({
-    catalog: {
-      name: "Published plugin",
-      summary: "Published plugin summary",
-      official: true,
-      author: "publisher",
-      downloads: 42,
-      imageUrl: "https://cdn.example/plugin.png",
-    },
-    local: { installed: true, state: "enabled", action: "manage" },
-  });
+  expect(controller.result?.items).toEqual([published]);
 });
 
-it("retains published presentation when a local placeholder arrives later", async () => {
-  const published = entry(0, "https://cdn.example/plugin.png");
-  published.id = "shared-plugin";
-  published.catalog.name = "Published plugin";
-  published.catalog.summary = "Published plugin summary";
-  published.catalog.official = true;
-  published.catalog.downloads = 42;
-  const installed = entry(1);
-  installed.id = published.id;
-  installed.catalog.name = "Bundled placeholder";
-  installed.catalog.summary = "Bundled placeholder summary";
-  delete installed.catalog.family;
-  installed.local.pluginId = "shared-plugin";
-  installed.local.installed = true;
-  installed.local.state = "enabled";
-  installed.local.action = "manage";
-  const { controller } = setup([
-    { items: [published], nextCursor: "catalog-page-2" },
-    { items: [installed] },
-  ]);
+it("preserves independent Trending rank from the deduplicated overview", async () => {
+  const official = entry(1);
+  official.catalog.official = true;
+  official.catalog.downloads = 10_000;
+  official.catalog.trending = true;
+  official.catalog.trendingRank = 1;
+  const community = entry(2);
+  community.catalog.downloads = 100;
+  community.catalog.trending = true;
+  community.catalog.trendingRank = 0;
+  const { controller } = setup([{ items: [official, community] }]);
 
   await controller.refresh();
 
-  expect(controller.result?.items[0]).toMatchObject({
-    catalog: {
-      name: "Published plugin",
-      summary: "Published plugin summary",
-      official: true,
-      downloads: 42,
-      imageUrl: "https://cdn.example/plugin.png",
-    },
-    local: { installed: true, state: "enabled", action: "manage" },
-  });
+  expect(controller.result?.items.map((item) => item.id)).toEqual([official.id, community.id]);
+  expect(controller.trending.map((item) => item.id)).toEqual([community.id, official.id]);
 });
 
-it("keeps loaded catalog pages when a later cursor request fails", async () => {
-  let requestCount = 0;
-  const firstPage = Array.from({ length: 100 }, (_, index) => entry(index));
-  const { controller } = setup([], async (method) => {
-    if (method !== "plugins.catalog.browse") {
-      throw new Error(`unexpected method: ${method}`);
-    }
-    requestCount += 1;
-    if (requestCount === 1) {
-      return { items: firstPage, nextCursor: "catalog-page-2" };
-    }
-    throw new Error("ClawHub cursor unavailable");
-  });
+it("keeps unranked overview members after ranked entries", async () => {
+  const ranked = entry(1);
+  ranked.catalog.featured = true;
+  ranked.catalog.featuredRank = 0;
+  const unranked = entry(2);
+  unranked.catalog.featured = true;
+  const { controller } = setup([{ items: [unranked, ranked] }]);
 
   await controller.refresh();
 
-  expect(controller.result?.items).toEqual(
-    firstPage.toSorted((left, right) => left.catalog.name.localeCompare(right.catalog.name)),
+  expect(controller.featured.map((item) => item.id)).toEqual([ranked.id, unranked.id]);
+});
+
+it("preserves category navigation when a filtered view reconnects", async () => {
+  const categories = [
+    {
+      slug: "channels",
+      label: "Channels",
+      description: "Channels",
+      icon: "message-circle",
+      order: 0,
+    },
+  ];
+  const { controller } = setup([], async (method) =>
+    method === "plugins.catalog.categories" ? { categories } : { items: [entry(1)], categories },
   );
-  expect(controller.remoteError).toContain("ClawHub cursor unavailable");
-});
-
-it("surfaces rejected category shelf requests", async () => {
-  const globalFinance = entry(0);
-  globalFinance.catalog.categories = ["finance-payments"];
-  const { controller } = setup([], async (method, params) => {
-    if (method === "plugins.catalog.categories") {
-      return {
-        categories: [
-          {
-            slug: "finance-payments",
-            label: "Finance & payments",
-            description: "Finance",
-            icon: "package",
-            order: 0,
-          },
-        ],
-      };
-    }
-    if (method !== "plugins.catalog.browse") {
-      throw new Error(`unexpected method: ${method}`);
-    }
-    if ((params as { category?: string }).category) {
-      throw new Error("category unavailable");
-    }
-    return { items: [globalFinance] };
-  });
 
   await controller.refresh();
-  await controller.refreshCategories();
-
-  expect(controller.remoteError).toContain("category unavailable");
-});
-
-it("preserves enriched catalog facts from a fulfilled category fallback", async () => {
-  const enriched = entry(0, "https://cdn.example/plugin.png");
-  enriched.catalog.categories = [];
-  enriched.catalog.official = true;
-  enriched.catalog.author = "publisher";
-  enriched.catalog.downloads = 42;
-  const fallback = entry(1);
-  fallback.id = enriched.id;
-  fallback.catalog.name = enriched.catalog.name;
-  fallback.local.pluginId = "plugin-0";
-  fallback.local.installed = true;
-  fallback.local.state = "enabled";
-  fallback.local.action = "manage";
-  const { controller } = setup([], async (method, params) => {
-    if (method === "plugins.catalog.categories") {
-      return {
-        categories: [
-          {
-            slug: "tools",
-            label: "Tools",
-            description: "Tools",
-            icon: "package",
-            order: 0,
-          },
-        ],
-      };
-    }
-    if (method !== "plugins.catalog.browse") {
-      throw new Error(`unexpected method: ${method}`);
-    }
-    return (params as { category?: string }).category
-      ? { items: [fallback], remoteError: "ClawHub unavailable" }
-      : { items: [enriched] };
-  });
-
-  await controller.refresh();
-  await controller.refreshCategories();
-
-  expect(controller.result?.items).toHaveLength(1);
-  expect(controller.result?.items[0]).toMatchObject({
-    catalog: {
-      official: true,
-      author: "publisher",
-      downloads: 42,
-      imageUrl: "https://cdn.example/plugin.png",
-      categories: ["tools"],
-    },
-    local: { installed: true, state: "enabled", action: "manage" },
-  });
-  expect(controller.remoteError).toBe("ClawHub unavailable");
-});
-
-it("surfaces partial ClawHub failures on the Featured shelf", async () => {
-  const { controller } = setup([
-    { items: [], remoteError: "ClawHub is unavailable; local plugins remain available." },
-  ]);
-
-  await controller.refreshFeatured();
-
-  expect(controller.featuredError).toBe("ClawHub is unavailable; local plugins remain available.");
-});
-
-it("clears cached catalog attribution when discovery ownership changes", async () => {
-  const attributed = entry(1);
-  attributed.local.pluginId = "local-plugin";
-  attributed.catalog.author = "first-gateway";
-  const { controller } = setup([{ items: [attributed] }]);
-  await controller.refresh();
-  expect(controller.attributions.get("local-plugin")?.author).toBe("first-gateway");
-
+  controller.category = "channels";
   controller.invalidate();
+  expect(controller.categories).toEqual([]);
+  await controller.ensureCategories();
+  await controller.refresh();
 
-  expect(controller.attributions.size).toBe(0);
+  expect(controller.categories).toEqual(categories);
+});
+
+it("sorts category pins before downloads on the first page and after pagination", async () => {
+  const pinned = entry(1);
+  pinned.catalog.categoryRanks = { models: 0 };
+  const official = entry(2);
+  official.catalog.official = true;
+  official.catalog.downloads = 10;
+  const popular = entry(3);
+  popular.catalog.downloads = 100;
+  const { controller } = setup([
+    { items: [official, pinned], nextCursor: "next" },
+    { items: [popular] },
+  ]);
+  controller.category = "models";
+  await controller.refresh();
+  expect(controller.result?.items.map((item) => item.id)).toEqual([pinned.id, official.id]);
+  await controller.loadMore();
+  expect(controller.result?.items.map((item) => item.id)).toEqual([
+    pinned.id,
+    popular.id,
+    official.id,
+  ]);
 });

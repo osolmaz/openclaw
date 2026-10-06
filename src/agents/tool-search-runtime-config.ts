@@ -1,6 +1,7 @@
 // Applies Tool Search overlays on top of the selected runtime config.
 import type { ModelSizeClass } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { isLocalModelLeanEnabled } from "./local-model-lean.js";
 import {
   applyAgentProfileToolSearchDefaults,
   type ResolvedAgentProfile,
@@ -44,7 +45,9 @@ export function resolveAgentToolSearchRuntimeConfig(params: {
     !profileConfig ||
     profileConfig !== runtimeConfig ||
     profileConfig.tools?.toolSearch !== undefined ||
-    params.model?.toolSearchMode !== "tools"
+    runtimeConfig?.tools?.toolSearch !== undefined ||
+    (params.model?.toolSearchMode !== "tools" &&
+      !isLocalModelLeanEnabled({ ...params, config: runtimeConfig }))
   ) {
     return profileConfig;
   }
@@ -52,6 +55,7 @@ export function resolveAgentToolSearchRuntimeConfig(params: {
     ...profileConfig,
     tools: {
       ...profileConfig.tools,
+      ...runtimeConfig?.tools,
       toolSearch: TOOL_SEARCH_DEFAULTS,
     },
   };

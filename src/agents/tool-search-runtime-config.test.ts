@@ -5,10 +5,13 @@ import { resolveAgentRuntimeToolConfig } from "./tool-runtime-config.js";
 import { resolveAgentToolSearchRuntimeConfig } from "./tool-search-runtime-config.js";
 import { resolveAgentToolSurfacePlan } from "./tool-surface-plan.js";
 
-function createRuntimeConfigPair(useSmallProfile = true) {
+function createRuntimeConfigPair(useSmallProfile = true, localModelLean = true) {
   const sourceConfig = {
     agents: {
-      defaults: { agentProfileId: useSmallProfile ? "openclaw/small" : "openclaw/base" },
+      defaults: {
+        agentProfileId: useSmallProfile ? "openclaw/small" : "openclaw/base",
+        experimental: { localModelLean },
+      },
       entries: { main: { default: true } },
     },
     plugins: {
@@ -97,7 +100,7 @@ describe("resolveAgentToolSearchRuntimeConfig", () => {
     const { runtimeConfig, sourceConfig } = createRuntimeConfigPair();
     setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
     const explicitConfig = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       plugins: {
         entries: {
           "example-plugin": { config: { marker: "explicit" } },
@@ -111,7 +114,7 @@ describe("resolveAgentToolSearchRuntimeConfig", () => {
 
   it("uses the input config when no runtime snapshot exists", () => {
     const config = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       tools: { toolSearch: false },
     } as OpenClawConfig;
 

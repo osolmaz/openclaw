@@ -1,6 +1,6 @@
 import { getPluginToolMeta } from "../../../plugins/tool-metadata.js";
 import { createBundleLspToolRuntime } from "../../agent-bundle-lsp-runtime.js";
-import { assignSafeServerNames, TOOL_NAME_SEPARATOR } from "../../agent-bundle-mcp-names.js";
+import { TOOL_NAME_SEPARATOR } from "../../agent-bundle-mcp-names.js";
 import { loadSessionMcpConfig } from "../../agent-bundle-mcp-runtime-config.js";
 import {
   acquireSessionMcpRuntime,
@@ -8,12 +8,17 @@ import {
 } from "../../agent-bundle-mcp-tools.js";
 import { filterToolsByAgentProfile } from "../../agent-profiles.js";
 import { wrapToolWithAbortSignal } from "../../agent-tools.abort.js";
+import { wrapToolWithBeforeToolCallHook } from "../../agent-tools.before-tool-call.wrapper.js";
+import { filterLocalModelLeanTools } from "../../local-model-lean.js";
 import { recordAgentCleanupFailure } from "../../run-cleanup-timeout.js";
 import { normalizeAgentRuntimeTools } from "../../runtime-plan/tools.js";
 import { createRuntimeToolMatcher } from "../../tool-policy-match.js";
 import { replaceWithEffectiveToolAllowlist } from "../../tool-policy.js";
 import { filterRuntimeCompatibleTools } from "../../tool-schema-projection.js";
-import { logRuntimeToolSchemaQuarantine } from "../../tool-schema-quarantine.js";
+import {
+  withRuntimeToolSchemaQuarantine,
+  type RuntimeToolSchemaQuarantineRecorder,
+} from "../../tool-schema-quarantine.js";
 import { captureFinalEffectiveCronCreatorToolAllowlist } from "../../tools/cron-tool.js";
 import { applyFinalEffectiveToolPolicy } from "../effective-tool-policy.js";
 import { log } from "../logger.js";
@@ -42,11 +47,15 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
     inheritedToolAllowlist,
     agentProfile,
     agentProfilePreserveToolNames,
+    localModelLeanPreserveToolNames,
     runtimeCapabilityProfile,
     toolsEnabled,
     toolsRaw,
   } = params.preparedToolBase;
-  const normalizeTools = (tools: Parameters<typeof normalizeAgentRuntimeTools>[0]["tools"]) =>
+  const normalizeTools = (
+    tools: Parameters<typeof normalizeAgentRuntimeTools>[0]["tools"],
+    recordQuarantine: RuntimeToolSchemaQuarantineRecorder,
+  ) =>
     normalizeAgentRuntimeTools({
       runtimePlan: params.attempt.runtimePlan,
       tools,
@@ -59,7 +68,7 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
       model: params.attempt.model,
       runtimeHandle: params.setup.getProviderRuntimeHandle(),
       onPreNormalizationSchemaDiagnostics: (diagnostics, sourceTools) =>
-        logRuntimeToolSchemaQuarantine({
+        recordQuarantine({
           diagnostics,
           tools: sourceTools,
           runId: params.attempt.runId,
@@ -68,7 +77,9 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
           sessionId: params.attempt.sessionId,
         }),
     });
-  const tools = normalizeTools(toolsEnabled ? toolsRaw : []);
+  const tools = await withRuntimeToolSchemaQuarantine((record) =>
+    normalizeTools(toolsEnabled ? toolsRaw : [], record),
+  );
   const providedClientTools =
     toolsEnabled &&
     !params.attempt.disableTools &&
@@ -80,13 +91,10 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
   // can reserve bundled tools or enter deferred catalogs and provider requests.
   let clientTools = providedClientTools;
   if (providedClientTools && effectiveToolsAllow) {
-    clientTools = [];
-    if (providedClientTools.length > 0) {
-      const matchesRuntime = createRuntimeToolMatcher(effectiveToolsAllow);
-      clientTools = providedClientTools.filter((definition) =>
-        matchesRuntime(definition.function.name),
-      );
-    }
+    const matchesRuntime = createRuntimeToolMatcher(effectiveToolsAllow);
+    clientTools = providedClientTools.filter((definition) =>
+      matchesRuntime(definition.function.name),
+    );
   }
   const bundleMetadataSnapshot = params.setup.getCurrentAttemptPluginMetadataSnapshot();
   // Scoped registries are partial views; only complete snapshots can bypass bundle discovery.
@@ -99,6 +107,7 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
     cfg: params.attempt.config,
     manifestRegistry: bundleManifestRegistry,
     toolOverrides: params.attempt.toolOverrides,
+    toolDenylist: runtimeCapabilityProfile.policy.explicitToolDenylist,
   };
   const bundleMcpEnabled =
     !params.attempt.forceRestartSafeTools &&
@@ -111,12 +120,16 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
         if (configuredNames.length === 0) {
           return [];
         }
-        const { loaded } = loadSessionMcpConfig({ ...mcpConfig, logDiagnostics: false });
+        const { loaded, safeServerNamesByServer } = loadSessionMcpConfig({
+          ...mcpConfig,
+          logDiagnostics: false,
+        });
         // Use the complete merged declaration order: bundled peers can own a
         // collision suffix before a configured server. This does not connect MCP.
-        const safeNames = assignSafeServerNames(Object.keys(loaded.mcpServers));
         return configuredNames.flatMap((name) => {
-          const safeName = safeNames.get(name);
+          const safeName = Object.hasOwn(loaded.mcpServers, name)
+            ? safeServerNamesByServer.get(name)
+            : undefined;
           return safeName ? [`${safeName}${TOOL_NAME_SEPARATOR}`] : [];
         });
       },
@@ -158,6 +171,7 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
       ? await createBundleLspToolRuntime({
           workspaceDir: params.setup.effectiveWorkspace,
           cfg: params.attempt.config,
+          abortSignal: params.attempt.abortSignal,
           manifestRegistry: bundleManifestRegistry,
           reservedToolNames: [
             ...tools.map((tool) => tool.name),
@@ -166,45 +180,43 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
           ],
         })
       : undefined;
-    const allowedBundleMcpTools = applyEmbeddedAttemptToolsAllow(
-      bundleMcpRuntime?.tools ?? [],
-      effectiveToolsAllow,
-      { toolMeta: (tool) => getPluginToolMeta(tool) },
-    );
-    const allowedBundleLspTools = applyEmbeddedAttemptToolsAllow(
-      bundleLspRuntime?.tools ?? [],
-      effectiveToolsAllow,
-      { toolMeta: (tool) => getPluginToolMeta(tool) },
-    );
-    const filteredBundledTools = applyFinalEffectiveToolPolicy({
-      bundledTools: [...allowedBundleMcpTools, ...allowedBundleLspTools],
-      config: params.attempt.config,
-      workspaceDir: params.setup.effectiveWorkspace,
-      metadataSnapshot: bundleMetadataSnapshot,
-      conversationCapabilityProfile: runtimeCapabilityProfile,
-      warn: (message) => log.warn(message),
-    });
-    if (bundleMcpRuntime?.restrictAppTools) {
-      const runtimeAllowedAppTools = applyEmbeddedAttemptToolsAllow(
-        bundleMcpRuntime.appTools ?? bundleMcpRuntime.tools,
-        effectiveToolsAllow,
-        { toolMeta: (tool) => getPluginToolMeta(tool) },
-      );
-      const allowedAppTools = applyFinalEffectiveToolPolicy({
-        bundledTools: runtimeAllowedAppTools,
+    const applyRuntimeAllowlist = (bundleTools: typeof toolsRaw) =>
+      applyEmbeddedAttemptToolsAllow(bundleTools, effectiveToolsAllow, {
+        toolMeta: (tool) => getPluginToolMeta(tool),
+      });
+    const applyBundlePolicy = (bundledTools: typeof toolsRaw) =>
+      applyFinalEffectiveToolPolicy({
+        bundledTools,
         config: params.attempt.config,
         workspaceDir: params.setup.effectiveWorkspace,
         metadataSnapshot: bundleMetadataSnapshot,
         conversationCapabilityProfile: runtimeCapabilityProfile,
         warn: (message) => log.warn(message),
       });
+    const filteredBundledTools = applyBundlePolicy([
+      ...applyRuntimeAllowlist(bundleMcpRuntime?.tools ?? []),
+      ...applyRuntimeAllowlist(bundleLspRuntime?.tools ?? []),
+    ]);
+    if (bundleMcpRuntime?.restrictAppTools) {
       // The view outlives this attempt; capture policy against the complete MCP catalog now.
-      bundleMcpRuntime.restrictAppTools(allowedAppTools);
+      bundleMcpRuntime.restrictAppTools(
+        applyBundlePolicy(
+          applyRuntimeAllowlist(bundleMcpRuntime.appTools ?? bundleMcpRuntime.tools),
+        ),
+      );
     }
-    const normalizedBundledTools =
-      filteredBundledTools.length > 0 ? normalizeTools(filteredBundledTools) : filteredBundledTools;
-    const projectTools = (coreTools: typeof toolsRaw) => {
-      const projectedTools = filterToolsByAgentProfile({
+    const normalizedBundledTools = (
+      filteredBundledTools.length > 0
+        ? await withRuntimeToolSchemaQuarantine((record) =>
+            normalizeTools(filteredBundledTools, record),
+          )
+        : filteredBundledTools
+    ).map((tool) => wrapToolWithBeforeToolCallHook(tool, params.preparedToolBase.toolHookContext));
+    const projectTools = (
+      coreTools: typeof toolsRaw,
+      recordQuarantine: RuntimeToolSchemaQuarantineRecorder,
+    ) => {
+      const profileFilteredTools = filterToolsByAgentProfile({
         tools: [...coreTools, ...normalizedBundledTools].map((tool) =>
           wrapToolWithAbortSignal(tool, params.preparedToolBase.toolAbortSignal),
         ),
@@ -215,6 +227,12 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
         modelSizeClass: params.attempt.model.modelSizeClass,
         resolvedProfile: agentProfile,
         preserveToolNames: agentProfilePreserveToolNames,
+      });
+      const projectedTools = filterLocalModelLeanTools({
+        tools: profileFilteredTools,
+        config: params.attempt.config,
+        agentId: params.setup.sessionAgentId,
+        preserveToolNames: localModelLeanPreserveToolNames,
       });
       const schemaProjection = filterRuntimeCompatibleTools(projectedTools);
       if (cronCreatorToolAllowlistCaptureRef) {
@@ -233,7 +251,7 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
         // parent's complete authorized surface, never denied bundled tools.
         replaceWithEffectiveToolAllowlist(inheritedToolAllowlist, schemaProjection.tools);
       }
-      logRuntimeToolSchemaQuarantine({
+      recordQuarantine({
         diagnostics: schemaProjection.diagnostics,
         tools: projectedTools,
         runId: params.attempt.runId,
@@ -243,17 +261,19 @@ export async function prepareEmbeddedAttemptBundleTools(params: {
       });
       return schemaProjection.tools;
     };
-    const uncompactedEffectiveTools = projectTools(tools);
+    const uncompactedEffectiveTools = await withRuntimeToolSchemaQuarantine((record) =>
+      projectTools(tools, record),
+    );
     return {
       bundleLspRuntime,
       bundleMcpRuntime,
       clientTools,
       tools,
       uncompactedEffectiveTools,
-      refreshTools: () => {
-        const nextTools = normalizeTools(toolsEnabled ? toolsRaw : []);
+      refreshTools: (recordQuarantine: RuntimeToolSchemaQuarantineRecorder) => {
+        const nextTools = normalizeTools(toolsEnabled ? toolsRaw : [], recordQuarantine);
         tools.splice(0, tools.length, ...nextTools);
-        const nextEffectiveTools = projectTools(tools);
+        const nextEffectiveTools = projectTools(tools, recordQuarantine);
         uncompactedEffectiveTools.splice(
           0,
           uncompactedEffectiveTools.length,

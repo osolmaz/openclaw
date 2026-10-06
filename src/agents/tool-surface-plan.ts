@@ -1,4 +1,5 @@
 import type { ModelSizeClass } from "../config/types.models.js";
+import type { AgentToolSurfacePresentation } from "../../packages/gateway-protocol/src/schema/worker-gateway-tool.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { ResolvedAgentProfile } from "./agent-profiles.js";
 import { getActiveAgentRingZeroTools } from "./agent-tools.ring-zero-context.js";
@@ -7,7 +8,7 @@ import {
   isCodeModeEngagedForModel,
   resolveCodeModeConfig,
 } from "./code-mode.js";
-import { normalizeToolPolicyName } from "./tool-policy-shared.js";
+import { normalizeToolPolicyName, readToolAllowlistIntersection } from "./tool-policy-shared.js";
 import { resolveAgentToolSearchRuntimeConfig } from "./tool-search-runtime-config.js";
 import type { ToolSearchConfig } from "./tool-search-types.js";
 import {
@@ -16,7 +17,7 @@ import {
   resolveToolSearchConfig,
 } from "./tool-search.js";
 
-type AgentToolSurfacePlanParams = {
+export type AgentToolSurfacePlanParams = {
   config?: OpenClawConfig;
   agentId?: string;
   sessionKey?: string;
@@ -30,6 +31,7 @@ type AgentToolSurfacePlanParams = {
     toolSearchMode?: "tools" | false;
   };
   codeModeOverride?: boolean | "auto";
+  disableToolSearch?: true;
   toolsEnabled: boolean;
   disableTools?: boolean;
   isRawModelRun: boolean;
@@ -39,12 +41,16 @@ type AgentToolSurfacePlanParams = {
 };
 
 export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) {
+  const restrictions = params.toolsAllow
+    ? (readToolAllowlistIntersection(params.toolsAllow) ?? [params.toolsAllow])
+    : [];
   // Private completion replies have one message capability. Ordinary forced
   // delivery keeps message direct while other tools can still use discovery.
   const completionPrivateMessageOnly =
     params.forceDirectMessageTool &&
-    params.toolsAllow?.length === 1 &&
-    normalizeToolPolicyName(params.toolsAllow[0] ?? "") === "message";
+    restrictions.some(
+      (allow) => allow.length === 1 && normalizeToolPolicyName(allow[0] ?? "") === "message",
+    );
   const codeModeConfig = resolveCodeModeConfig(
     params.config,
     params.agentId,
@@ -53,7 +59,7 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
       : undefined,
   );
   codeModeConfig.enabled = params.codeModeOverride ?? codeModeConfig.enabled;
-  const toolSearchRuntimeConfig = resolveAgentToolSearchRuntimeConfig({
+  const selectedToolConfig = resolveAgentToolSearchRuntimeConfig({
     config: params.config,
     agentId: params.agentId,
     sessionKey: params.sessionKey,
@@ -64,13 +70,18 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     completionPrivateMessageOnly,
     model: params.model,
   });
+  // Apply invocation restrictions after selecting the current runtime snapshot;
+  // config rebinding must not put an auxiliary direct-tool run back behind discovery.
+  const toolSearchRuntimeConfig = params.disableToolSearch
+    ? { ...selectedToolConfig, tools: { ...selectedToolConfig?.tools, toolSearch: false as const } }
+    : selectedToolConfig;
   const toolSearchConfig = resolveToolSearchConfig(toolSearchRuntimeConfig);
   const toolsAvailable =
     params.toolsEnabled &&
     getActiveAgentRingZeroTools().length === 0 &&
     params.disableTools !== true &&
     !params.isRawModelRun &&
-    params.toolsAllow?.length !== 0 &&
+    restrictions.every((allow) => allow.length > 0) &&
     !completionPrivateMessageOnly;
   const codeModeControlsEnabled =
     toolsAvailable &&
@@ -85,10 +96,23 @@ export function resolveAgentToolSurfacePlan(params: AgentToolSurfacePlanParams) 
     !codeModeControlsEnabled &&
     toolSearchConfig.enabled;
   return {
+    codeModeConfig,
     codeModeControlsEnabled,
     toolSearchControlsEnabled,
     toolSearchConfig,
     toolSearchRuntimeConfig,
+  };
+}
+
+/** Only resolved presentation facts cross a placement boundary; runtime config stays on its owner. */
+export function prepareAgentToolSurfacePresentation(
+  params: AgentToolSurfacePlanParams,
+): AgentToolSurfacePresentation {
+  const plan = resolveAgentToolSurfacePlan(params);
+  return {
+    codeMode: { ...plan.codeModeConfig, enabled: plan.codeModeControlsEnabled },
+    toolSearch: { ...plan.toolSearchConfig, enabled: plan.toolSearchControlsEnabled },
+    forceDirectMessageTool: params.forceDirectMessageTool,
   };
 }
 

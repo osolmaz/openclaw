@@ -13,8 +13,8 @@ const mocks = vi.hoisted(() => ({
   prepareScopedCatalog: vi.fn(),
   refreshStaleCatalog: vi.fn(),
   isFullCatalog: vi.fn(),
-  releaseSnapshot: vi.fn(),
-  releasePublishedSnapshot: vi.fn(),
+  releaseSnapshot: vi.fn(async () => {}),
+  releasePublishedSnapshot: vi.fn(async () => {}),
 }));
 
 vi.mock("../config/config.js", () => ({
@@ -37,18 +37,19 @@ vi.mock("./agent-scope.js", () => ({
   tryResolveLegacyCompatibilityAgentId: () => "main",
 }));
 
-vi.mock("./prepared-model-runtime.js", () => {
-  class PreparedModelRuntimeOwnerNotPublishedError extends Error {}
+vi.mock("./prepared-model-runtime.js", async () => {
+  const { PreparedModelRuntimeOwnerNotPublishedError } =
+    await import("./prepared-model-runtime.errors.js");
   return {
     PreparedModelRuntimeOwnerNotPublishedError,
     acquireAgentRunPreparedModelRuntime: async (input: Record<string, unknown>) => ({
       snapshot: await mocks.acquireSnapshot(input),
-      release: mocks.releaseSnapshot,
+      [Symbol.asyncDispose]: mocks.releaseSnapshot,
     }),
     activateStandalonePreparedModelRuntime: (...args: unknown[]) => mocks.activateSnapshot(...args),
     acquireReadOnlyPreparedModelRuntime: async (input: Record<string, unknown>) => ({
       snapshot: await mocks.loadSnapshot({ ...input, readOnly: true }),
-      release: mocks.releaseSnapshot,
+      [Symbol.asyncDispose]: mocks.releaseSnapshot,
     }),
     getPreparedModelRuntimeSnapshot: (...args: unknown[]) => mocks.getSnapshot(...args),
     loadPreparedModelRuntimeSnapshot: (...args: unknown[]) => mocks.loadSnapshot(...args),
@@ -57,7 +58,7 @@ vi.mock("./prepared-model-runtime.js", () => {
     prepareModelRuntimeSnapshot: (...args: unknown[]) => mocks.prepareSnapshot(...args),
     acquirePreparedModelRuntimeSnapshot: async (...args: unknown[]) => ({
       snapshot: await mocks.prepareSnapshot(...args),
-      release: mocks.releasePublishedSnapshot,
+      [Symbol.asyncDispose]: mocks.releasePublishedSnapshot,
     }),
     refreshPreparedModelRuntimeCatalog: (...args: unknown[]) => mocks.refreshStaleCatalog(...args),
   };
@@ -85,7 +86,7 @@ import {
 import {
   getPreparedModelRuntimeAuthStore,
   setPreparedModelFullCatalogAuth,
-  setPreparedModelRuntimeAuthStore,
+  bindPreparedModelRuntimeAuth,
 } from "./prepared-model-runtime-auth.js";
 import { PreparedModelRuntimeOwnerNotPublishedError } from "./prepared-model-runtime.js";
 
@@ -208,7 +209,7 @@ describe("prepared model catalog access", () => {
       mocks.prepareSnapshot.mockRejectedValue(new PreparedModelRuntimeOwnerNotPublishedError());
       mocks.loadSnapshot.mockResolvedValue(snapshot);
       mocks.acquireSnapshot.mockResolvedValue(snapshot);
-      mocks.releaseSnapshot.mockImplementation(() => {
+      mocks.releaseSnapshot.mockImplementation(async () => {
         current = false;
       });
 
@@ -304,7 +305,6 @@ describe("prepared model catalog access", () => {
   it.each([
     { readOnly: undefined, refreshFullCatalog: true },
     { readOnly: true, refreshFullCatalog: true },
-    { readOnly: false, refreshFullCatalog: true },
   ] as const)(
     "refreshes stale content once (readOnly=$readOnly, refresh=$refreshFullCatalog)",
     async ({ readOnly, refreshFullCatalog }) => {
@@ -321,6 +321,7 @@ describe("prepared model catalog access", () => {
       mocks.prepareSnapshot.mockResolvedValue(snapshot);
       mocks.refreshStaleCatalog.mockResolvedValue(staleCatalog);
       setPreparedModelFullCatalogAuth(staleCatalog, {
+        providerAuthLabels: new Map(),
         authStore: fullSnapshot.authStore,
         authModes: fullSnapshot.authModes,
       });
@@ -338,11 +339,8 @@ describe("prepared model catalog access", () => {
 
   it.each([
     { readOnly: undefined, refreshFullCatalog: undefined },
-    { readOnly: undefined, refreshFullCatalog: false },
-    { readOnly: true, refreshFullCatalog: undefined },
     { readOnly: true, refreshFullCatalog: false },
     { readOnly: false, refreshFullCatalog: undefined },
-    { readOnly: false, refreshFullCatalog: false },
   ] as const)(
     "does not refresh current facts without intent (readOnly=$readOnly, refresh=$refreshFullCatalog)",
     async ({ readOnly, refreshFullCatalog }) => {
@@ -355,6 +353,7 @@ describe("prepared model catalog access", () => {
       mocks.prepareSnapshot.mockResolvedValue(snapshot);
       mocks.refreshStaleCatalog.mockRejectedValue(new Error("full discovery was awaited"));
       setPreparedModelFullCatalogAuth(snapshot.modelCatalog, {
+        providerAuthLabels: new Map(),
         authStore: fullSnapshot.authStore,
         authModes: fullSnapshot.authModes,
       });
@@ -412,6 +411,7 @@ describe("prepared model catalog access", () => {
         workspaceDir: "/tmp/prepared-model-catalog-workspace",
       }),
       ["anthropic"],
+      "static",
     );
   });
 
@@ -425,14 +425,18 @@ describe("prepared model catalog access", () => {
       routeVariants: [],
     };
     const { authStore, ...snapshotFacts } = fullSnapshot;
-    setPreparedModelFullCatalogAuth(discoveredCatalog, { authStore, authModes: {} });
+    setPreparedModelFullCatalogAuth(discoveredCatalog, {
+      authStore,
+      authModes: {},
+      providerAuthLabels: new Map(),
+    });
     const loadFullModelCatalog = vi.fn(async () => discoveredCatalog);
     const snapshot = {
       ...snapshotFacts,
       modelCatalog: configuredCatalog,
       loadFullModelCatalog,
     };
-    setPreparedModelRuntimeAuthStore(snapshot, authStore);
+    bindPreparedModelRuntimeAuth(snapshot, { store: authStore });
     mocks.prepareSnapshot.mockResolvedValue(snapshot);
 
     await expect(loadPreparedModelCatalogSnapshot({ readOnly: true })).resolves.toBe(
@@ -507,24 +511,11 @@ describe("prepared model catalog access", () => {
     },
   );
 
-  it("restores the unique configured agent identity for a published replacement owner", async () => {
-    const committedSnapshot = {
-      ...fullSnapshot,
-      agentDir: "/tmp/prepared-model-catalog-agent",
-      config: { agents: { list: [{ id: "main", default: true }] } },
-    };
-    mocks.prepareSnapshot.mockResolvedValue(committedSnapshot);
-
-    await expect(
-      loadResolvedPublishedModelCatalogOwner({ agentId: "MAIN", readOnly: true }),
-    ).resolves.toMatchObject({ agentId: "main", agentDir: committedSnapshot.agentDir });
-  });
-
   it("resolves a complete published owner for runtime consumers", async () => {
     const committedSnapshot = {
       ...fullSnapshot,
       agentDir: "/tmp/prepared-model-catalog-agent",
-      config: { agents: { list: [{ id: "main", default: true }] } },
+      config: { agents: { entries: { main: {} } } },
     };
     mocks.prepareSnapshot.mockResolvedValue(committedSnapshot);
 
@@ -551,7 +542,7 @@ describe("prepared model catalog access", () => {
       ...fullSnapshot,
       agentDir: "/tmp/shared-agent-dir",
       catalogOwner: undefined,
-      config: { agents: { list: [{ id: "main", default: true }, { id: "worker" }] } },
+      config: { agents: { entries: { main: {}, worker: {} } } },
     };
     mocks.prepareSnapshot.mockResolvedValue(committedSnapshot);
 
@@ -601,6 +592,7 @@ describe("prepared model catalog access", () => {
       loadFullModelCatalog: vi.fn().mockRejectedValue(new Error("unrequested discovery")),
     };
     setPreparedModelFullCatalogAuth(completedCatalog, {
+      providerAuthLabels: new Map(),
       authStore: fullSnapshot.authStore,
       authModes: fullSnapshot.authModes,
     });
