@@ -20,6 +20,7 @@ export type AgentExecCliOptions = {
   fallback?: string[];
   codeMode?: "direct" | "auto" | "code";
   agentProfile?: string;
+  localModelLean?: boolean;
   authEnvOnly?: boolean;
   timeout?: string;
   json?: boolean;
@@ -176,7 +177,7 @@ export async function resolveExecBaseConfig(
 export function buildExecRunConfig(params: {
   base: OpenClawConfig;
   cwd: string;
-  opts?: Pick<AgentExecCliOptions, "agentProfile">;
+  opts?: Pick<AgentExecCliOptions, "agentProfile" | "localModelLean">;
 }): OpenClawConfig {
   const opts = params.opts ?? {};
   const agentProfileId = normalizeAgentProfile(opts.agentProfile);

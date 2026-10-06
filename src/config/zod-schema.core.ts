@@ -253,8 +253,6 @@ const ModelDefinitionSchema = z.strictObject({
   name: z.string().min(1),
   /** Trusted total-parameter size class used for Agent Profile selection. */
   modelSizeClass: z.enum(MODEL_SIZE_CLASSES).optional(),
-  /** Metadata source marker for models added by CLI/catalog tooling. */
-  metadataSource: z.literal("models-add").optional(),
   /** Optional API adapter override for this model. */
   api: ModelApiSchema.optional(),
   /** Optional base URL override for this model. */

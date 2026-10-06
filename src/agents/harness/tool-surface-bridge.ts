@@ -5,7 +5,6 @@ import {
   filterToolsByAgentProfile,
   resolveAgentProfile,
   resolveAgentProfilePreserveToolNames,
-  type ResolvedAgentProfile,
 } from "../agent-profiles.js";
 import { finalizeAgentToolAvailability } from "../agent-tool-availability.js";
 import type { HookContext } from "../agent-tools.before-tool-call.js";
@@ -14,8 +13,6 @@ import {
   CODE_MODE_WAIT_TOOL_NAME,
   createCodeModeTools,
 } from "../code-mode.js";
-import type { ModelSizeClass } from "../config/types.models.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
 import { mergeForcedEmbeddedAttemptToolsAllow } from "../embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import {

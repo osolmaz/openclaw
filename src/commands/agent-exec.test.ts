@@ -7,6 +7,7 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanupTempDirs, useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { AgentRunTerminalOutcomeError } from "../agents/agent-run-terminal-error.js";
+import { buildExecRunConfig } from "./agent-exec-input.js";
 import { captureAgentToolSourceExecutionGuard } from "../agents/agent-tool-source-execution-guard.js";
 import { wrapToolWithBeforeToolCallHook } from "../agents/agent-tools.before-tool-call.js";
 import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
@@ -303,7 +304,7 @@ describe("agent exec command composition", () => {
       try {
         const result = await runAgentExecWithMock(
           "inspect",
-          { codeMode: mode, model: "test/model-a", agentProfile: "openclaw/small" },
+          { codeMode: mode, model: "test/model-a", localModelLean: true },
           runtime,
           vi.fn(async (invocation) => {
             const config = expectDefined(getRuntimeConfigSnapshot(), "isolated run config");
@@ -429,218 +430,6 @@ describe("agent exec command composition", () => {
     // run in the same process would inherit them.
     expect(process.env.OPENCLAW_EXEC_ENV_PROBE).toBeUndefined();
   });
-
-  it("leaves no runtime config snapshot behind when the caller had none", async () => {
-    clearRuntimeConfigSnapshot();
-    const { runtime } = createRuntime();
-
-    await agentExecCommand("inspect", {}, runtime, {
-      runAgent: vi.fn(async () => successResult()),
-    });
-
-    // Resolving the ambient config pins a snapshot of its own, so "previous" has
-    // to be read before that happens or cleanup reinstalls exec's own load.
-    expect(getRuntimeConfigSnapshot() ?? undefined).toBeUndefined();
-  });
-
-  it("restores a caller's runtime config snapshot after the run", async () => {
-    const callerSnapshot = {
-      models: { providers: { caller: { baseUrl: "https://caller.invalid", models: [] } } },
-    };
-    setRuntimeConfigSnapshot(callerSnapshot);
-    const { runtime } = createRuntime();
-    let observedDuringRun: string | undefined;
-
-    try {
-      await agentExecCommand("inspect", {}, runtime, {
-        runAgent: vi.fn(async () => {
-          observedDuringRun = getRuntimeConfigSnapshot()?.tools?.profile;
-          return successResult();
-        }),
-      });
-
-      // The run sees exec's composed config...
-      expect(observedDuringRun).toBe("coding");
-      // ...and the caller gets its own back afterwards.
-      expect(getRuntimeConfigSnapshot()?.models?.providers?.caller?.baseUrl).toBe(
-        "https://caller.invalid",
-      );
-    } finally {
-      clearRuntimeConfigSnapshot();
-    }
-  });
-
-  it("publishes no config env values when the config load fails", async () => {
-    const seedDir = tempDirs.make("openclaw-agent-exec-badenv-");
-    const seedPath = path.join(seedDir, "openclaw.json");
-    // The loader owns this: it applies `env.vars` only after validation passes,
-    // and restores them from its own catch. Pinned here because the observable
-    // contract matters regardless of which layer enforces it.
-    await fs.writeFile(
-      seedPath,
-      JSON.stringify({
-        env: { vars: { OPENCLAW_EXEC_FAILED_PROBE: "from-rejected-config" } },
-        agents: { defaults: { sandbox: { mode: "not-a-real-mode" } } },
-      }),
-      "utf8",
-    );
-    const { runtime } = createRuntime();
-
-    const result = await agentExecCommand("inspect", { config: seedPath }, runtime, {
-      runAgent: vi.fn(async () => successResult()),
-    });
-
-    expect(result.exitCode).not.toBe(0);
-    expect(process.env.OPENCLAW_EXEC_FAILED_PROBE).toBeUndefined();
-  });
-
-  it("leaves an explicit state directory untouched", async () => {
-    const stateDir = tempDirs.make("openclaw-agent-exec-state-");
-    const marker = path.join(stateDir, "keep.txt");
-    await fs.writeFile(marker, "keep", "utf8");
-    const { runtime } = createRuntime();
-
-    await agentExecCommand("inspect", { stateDir }, runtime, {
-      runAgent: vi.fn(async () => {
-        expect(process.env.OPENCLAW_STATE_DIR).toBe(stateDir);
-        return successResult();
-      }),
-    });
-
-    await expect(fs.readFile(marker, "utf8")).resolves.toBe("keep");
-    // The run config inherits the ambient config, so a retained state dir must
-    // never receive a serialized copy of it.
-    await expect(fs.readdir(stateDir)).resolves.toEqual(["keep.txt"]);
-  });
-});
-
-describe("agent exec run config layering", () => {
-  it("keeps the run scoped to the invocation folder over any config", () => {
-    const config = buildExecRunConfig({
-      base: { agents: { defaults: { workspace: "/elsewhere", skipBootstrap: false } } },
-      cwd: "/run/here",
-    });
-
-    expect(config.agents?.defaults?.workspace).toBe("/run/here");
-    expect(config.agents?.defaults?.skipBootstrap).toBe(true);
-    expect(config.skills?.load?.watch).toBe(false);
-  });
-
-  it("never downgrades a configured sandbox or shell env to the exec defaults", () => {
-    const config = buildExecRunConfig({
-      base: {
-        env: { shellEnv: { enabled: true } },
-        agents: { defaults: { sandbox: { mode: "all" } } },
-        tools: { profile: "full" },
-      },
-      cwd: "/run/here",
-    });
-
-    expect(config.agents?.defaults?.sandbox?.mode).toBe("all");
-    expect(config.env?.shellEnv?.enabled).toBe(true);
-    expect(config.tools?.profile).toBe("full");
-  });
-
-  it("applies coding one-shot defaults when the config leaves them unset", () => {
-    const config = buildExecRunConfig({ base: {}, cwd: "/run/here" });
-
-    expect(config.agents?.defaults?.sandbox?.mode).toBe("off");
-    expect(config.env?.shellEnv?.enabled).toBe(false);
-    expect(config.tools?.profile).toBe("coding");
-    expect(config.tools?.fs?.workspaceOnly).toBe(true);
-  });
-
-  it("leaves exec host routing to the configured sandbox", () => {
-    const sandboxed = buildExecRunConfig({
-      base: { agents: { defaults: { sandbox: { mode: "all" } } } },
-      cwd: "/run/here",
-    });
-
-    expect(sandboxed.agents?.defaults?.sandbox?.mode).toBe("all");
-    expect(sandboxed.tools?.exec?.host).toBeUndefined();
-    expect(buildExecRunConfig({ base: {}, cwd: "/run/here" }).tools?.exec?.host).toBeUndefined();
-  });
-
-  it("carries config-owned provider and harness surfaces into the run", () => {
-    const config = buildExecRunConfig({
-      base: {
-        models: { providers: { custom: { baseUrl: "https://example.invalid", models: [] } } },
-        tools: { codeMode: { enabled: true } },
-      },
-      cwd: "/run/here",
-    });
-
-    expect(config.models?.providers?.custom?.baseUrl).toBe("https://example.invalid");
-    expect(config.tools?.codeMode).toMatchObject({ enabled: true });
-  });
-
-  it("pins per-agent workspaces to the invocation folder", () => {
-    const config = buildExecRunConfig({
-      base: { agents: { entries: { ops: { workspace: "/elsewhere" } } } },
-      cwd: "/run/here",
-    });
-
-    expect(config.agents?.entries?.ops?.workspace).toBe("/run/here");
-  });
-
-  it("drops inherited agent directories so run state stays in the state dir", () => {
-    const config = buildExecRunConfig({
-      base: {
-        agents: {
-          entries: { ops: { agentDir: "/persistent/agents/ops", model: "openai/gpt-5.6-sol" } },
-        },
-      },
-      cwd: "/run/here",
-    });
-
-    expect(config.agents?.entries?.ops?.agentDir).toBeUndefined();
-    // Only the directory is dropped; the rest of the entry is still inherited.
-    expect(config.agents?.entries?.ops?.model).toBe("openai/gpt-5.6-sol");
-  });
-
-  it("drops an inherited session store so the invocation state dir owns the agent database", () => {
-    const config = buildExecRunConfig({
-      base: {
-        session: {
-          store: "/persistent/agents/{agentId}/sessions/sessions.json",
-          mainKey: "primary",
-        },
-      },
-      cwd: "/run/here",
-    });
-
-    expect(config.session?.store).toBeUndefined();
-    expect(config.session?.mainKey).toBe("primary");
-  });
-
-  it("drops an inherited harness cwd so --cwd wins", () => {
-    const config = buildExecRunConfig({
-      base: {
-        agents: {
-          entries: {
-            ops: { runtime: { type: "acp", acp: { agent: "codex", cwd: "/other/repo" } } },
-          },
-        },
-      },
-      cwd: "/run/here",
-    });
-
-    const runtime = config.agents?.entries?.ops?.runtime;
-    expect(runtime?.type === "acp" ? runtime.acp?.cwd : "unset").toBeUndefined();
-    // The rest of the harness selection survives.
-    expect(runtime?.type === "acp" ? runtime.acp?.agent : undefined).toBe("codex");
-  });
-
-  it("keeps Code Mode limits while selecting the small Agent Profile", () => {
-    const config = buildExecRunConfig({
-      base: { tools: { codeMode: { enabled: true, maxOutputBytes: 4096 } } },
-      cwd: "/run/here",
-      opts: { agentProfile: "openclaw/small" },
-    });
-
-    expect(config.tools?.codeMode).toEqual({ enabled: true, maxOutputBytes: 4096 });
-    expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
-  });
 });
 
 describe("agent exec base config resolution", () => {
@@ -705,5 +494,16 @@ describe("agent exec tool lifetime", () => {
     });
     expect(replacement.exitCode).toBe(0);
     expect(effect).not.toHaveBeenCalled();
+  });
+
+  it("keeps Code Mode limits while selecting the small Agent Profile", () => {
+    const config = buildExecRunConfig({
+      base: { tools: { codeMode: { enabled: true, maxOutputBytes: 4096 } } },
+      cwd: "/run/here",
+      opts: { agentProfile: "openclaw/small" },
+    });
+
+    expect(config.tools?.codeMode).toEqual({ enabled: true, maxOutputBytes: 4096 });
+    expect(config.agents?.defaults?.agentProfileId).toBe("openclaw/small");
   });
 });

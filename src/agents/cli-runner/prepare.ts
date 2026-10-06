@@ -861,7 +861,7 @@ async function prepareCliRunContextWithinReadFence(
       ? undefined
       : await resolveWorkspaceBootstrapRouting({
           isWorkspaceBootstrapPending: isWorkspaceBootstrapPendingImpl,
-          bootstrapFiles,
+          bootstrapFiles: resolvedBootstrap.bootstrapFiles,
           bootstrapFilesProvideAccess: false,
           bootstrapContextRunKind: params.bootstrapContextRunKind,
           trigger: params.trigger,

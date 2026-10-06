@@ -1,5 +1,4 @@
 import {
-  defineLegacyConfigMigration,
   getRecord,
   type LegacyConfigMigrationSpec,
   type LegacyConfigRule,
@@ -116,10 +115,9 @@ function migrateLegacyAgentProfiles(raw: Record<string, unknown>, changes: strin
 }
 
 export const LEGACY_CONFIG_MIGRATIONS_AGENT_PROFILES: LegacyConfigMigrationSpec[] = [
-  defineLegacyConfigMigration({
+  {
     id: "agents.localModelLean->agentProfileId",
-    describe: "Move legacy local-model Lean settings to Agent Profiles",
     legacyRules: LEGACY_AGENT_PROFILE_RULES,
     apply: migrateLegacyAgentProfiles,
-  }),
+  },
 ];

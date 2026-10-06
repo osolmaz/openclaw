@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import type { EmbeddedContextFile } from "../embedded-agent-helpers.js";
+import type { EmbeddedContextFile } from "../embedded-agent-helpers/context-file.js";
 import {
   buildBootstrapContextFiles,
   resolveBootstrapMaxChars,

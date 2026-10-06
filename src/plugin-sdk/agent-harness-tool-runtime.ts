@@ -63,6 +63,8 @@ export function createAgentHarnessToolSurfaceRuntime(params: AgentHarnessToolSur
   > = runtime;
   return {
     codeModeControlsEnabled: runtime.codeModeControlsEnabled,
+    agentProfile: runtime.agentProfile,
+    buildAgentProfileSystemPrompt: runtime.buildAgentProfileSystemPrompt,
     config: runtime.config,
     includeToolSearchControls: runtime.includeToolSearchControls,
     runtimeToolAllowlist: runtime.runtimeToolAllowlist,
@@ -74,14 +76,16 @@ export function createAgentHarnessToolSurfaceRuntime(params: AgentHarnessToolSur
       tools: Parameters<CoreCompactTools>[0],
       {
         hookContext,
+        agentProfileApplied,
         localModelLeanApplied,
       }: Pick<
         NonNullable<Parameters<CoreCompactTools>[1]>,
-        "hookContext" | "localModelLeanApplied"
+        "hookContext" | "agentProfileApplied" | "localModelLeanApplied"
       > = {},
     ) => {
       const { tools: compacted, promptToolPolicy } = runtime.compactTools(tools, {
         hookContext,
+        agentProfileApplied,
         localModelLeanApplied,
       });
       return { tools: compacted, promptToolPolicy };

@@ -45,6 +45,27 @@ export function formatActiveGoalContext(sessionEntry?: SessionEntry): string | u
   return `${ACTIVE_GOAL_CONTEXT_PREFIX}${boundedObjective}${ACTIVE_GOAL_CONTEXT_SUFFIX}`;
 }
 
+const MAX_UNTRUSTED_HISTORY_ENTRIES = 20;
+
+function buildInboundHistoryMediaPromptPayload(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) {
+      return [];
+    }
+    const payload = {
+      kind: normalizePromptMetadataString(entry["kind"]),
+      content_type: normalizePromptMetadataString(entry["contentType"]),
+      message_id: normalizePromptMetadataString(entry["messageId"]),
+      has_local_path: normalizePromptMetadataString(entry["path"]) ? true : undefined,
+      has_url: normalizePromptMetadataString(entry["url"]) ? true : undefined,
+    };
+    return Object.values(payload).some((field) => field !== undefined) ? [payload] : [];
+  });
+}
+
 function isQueuedGoalOnlyBlock(block: string, injectedGoals: ReadonlySet<string>): boolean {
   const [label, goal, ...rest] = block.split("\n");
   return (

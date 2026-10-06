@@ -18,7 +18,6 @@ import { joinPresentTextSegments } from "../../../shared/text/join-segments.js";
 import { resolveAdmittedRunActiveAssertion } from "../../admitted-run-context.js";
 import {
   selectCurrentInboundContext,
-  type ContextSerializationReport,
 } from "../../context-serialization/project.js";
 import type { ResolvedContextSerialization } from "../../context-serialization/resolve.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../defaults.js";
@@ -72,6 +71,7 @@ import { applyResolvedToolPromptFinalizer } from "./attempt-prompt-support.js";
 import { composeSystemPromptWithHookContext } from "./attempt-thread-helpers.js";
 import { pruneProcessedHistoryImages } from "./history-image-prune.js";
 import {
+  buildCurrentInboundPrompt,
   buildRuntimeContextCustomMessage,
   resolveRuntimeContextPromptParts,
 } from "./runtime-context-prompt.js";

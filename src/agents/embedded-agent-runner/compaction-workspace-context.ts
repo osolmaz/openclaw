@@ -11,7 +11,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveAgentProfile } from "../agent-profiles.js";
 import { prepareAgentProfileWorkspaceContext } from "../agent-profiles/workspace-context.js";
 import { resolveBootstrapContextForRun } from "../bootstrap-files.js";
-import type { EmbeddedContextFile } from "../embedded-agent-helpers.js";
+import type { EmbeddedContextFile } from "../embedded-agent-helpers/context-file.js";
 
 export async function resolveCompactionContextFiles(params: {
   config?: OpenClawConfig;

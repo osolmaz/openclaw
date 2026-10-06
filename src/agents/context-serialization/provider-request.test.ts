@@ -98,7 +98,7 @@ function buildProviderMessages(mode: "default" | "lean") {
 function findCarrier(messages: Array<Record<string, unknown>>) {
   return messages.find(
     (message) =>
-      message["role"] === "user" &&
+      (message["role"] === "system" || message["role"] === "developer") &&
       JSON.stringify(message["content"]).includes(INTERNAL_RUNTIME_CONTEXT_BEGIN),
   );
 }

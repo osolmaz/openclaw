@@ -2,6 +2,7 @@ import type { WorkerToolSurface } from "../../../packages/gateway-protocol/src/s
 import { createPreparedEmbeddedAgentSettingsManager } from "../../agents/agent-project-settings.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveUserTimezone } from "../../agents/date-time.js";
+import { resolveAgentProfile } from "../../agents/agent-profiles.js";
 import { prepareEmbeddedAttemptBootstrap } from "../../agents/embedded-agent-runner/run/attempt-bootstrap-prepare.js";
 import {
   prepareEmbeddedAttemptPromptAssembly,
@@ -110,9 +111,17 @@ export async function prepareWorkerTurnPrompt(params: {
         pluginMetadataSnapshot: preparedModelRuntime.metadataSnapshot,
       }),
   };
+  const agentProfile = resolveAgentProfile({
+    config: turn.config,
+    agentId: turn.agentId,
+    sessionKey: turn.sessionKey,
+    modelProvider: model.provider,
+    modelId: model.id,
+  });
   const bootstrap = await prepareEmbeddedAttemptBootstrap({
     attempt,
     setup,
+    agentProfile,
     hasReadTool: capabilityToolNames.has("read"),
     isRawModelRun,
   });
@@ -120,6 +129,7 @@ export async function prepareWorkerTurnPrompt(params: {
   const prompt = await prepareEmbeddedAttemptSystemPrompt({
     attempt,
     setup,
+    agentProfile,
     bootstrap,
     remoteWorkspace: true,
     referencePaths: { docsPath: null, sourcePath: null },

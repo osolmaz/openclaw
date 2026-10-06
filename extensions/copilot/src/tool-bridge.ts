@@ -170,10 +170,6 @@ export async function createCopilotToolBridge(
     };
   }
 
-  const createOpenClawCodingTools =
-    input.createOpenClawCodingTools ??
-    (await import("openclaw/plugin-sdk/agent-harness")).createOpenClawCodingTools;
-
   const toolOptions = buildOpenClawCodingToolsOptions(
     input,
     {
@@ -201,13 +197,7 @@ export async function createCopilotToolBridge(
     toolSurfaceRuntime.runtimeToolAllowlist,
     { toolMeta: getPluginToolMeta },
   );
-  const plannedSourceTools = filterCopilotToolsForConstructionPlan(
-    allowedSourceTools,
-    toolPlan.codingToolConstructionPlan,
-    { preserveToolNames: toolSurfaceRuntime.runtimeToolAllowlist },
-  );
-  const compactedTools = toolSurfaceRuntime.compactTools(plannedSourceTools, {
-    agentProfileApplied: true,
+  const compactedTools = toolSurfaceRuntime.compactTools(allowedSourceTools, {
     localModelLeanApplied: true,
   });
   // The constructor output is bound before catalog compaction so hidden tools

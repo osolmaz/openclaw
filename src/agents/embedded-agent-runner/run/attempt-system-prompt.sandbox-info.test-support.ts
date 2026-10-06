@@ -15,6 +15,7 @@ import { createStubTool } from "../../test-helpers/agent-tool-stubs.js";
 import { makeProviderModelFixture } from "../../test-helpers/provider-model-fixture.js";
 import * as sandboxInfo from "../sandbox-info.js";
 import { createAttemptSetupFixture } from "./attempt-setup.test-support.js";
+import { resolveAgentProfile } from "../../agent-profiles.js";
 import { prepareEmbeddedAttemptSystemPrompt } from "./attempt-system-prompt-prepare.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
@@ -137,6 +138,7 @@ export async function withPromptFixture(
           }),
         }),
         capabilityToolNames: new Set(["exec"]),
+        agentProfile: resolveAgentProfile({ config }),
         effectiveTools: tools,
         isRawModelRun: false,
         modelToolsEnabled: true,

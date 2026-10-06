@@ -137,6 +137,7 @@ describe("prepareEmbeddedAttemptBootstrap", () => {
             effectiveWorkspace: workspace,
             resolvedWorkspace: workspace,
           }),
+          agentProfile: resolveAgentProfile({}),
           hasReadTool: true,
           isRawModelRun: false,
         });
