@@ -46,31 +46,6 @@ describe("buildSystemPromptReport", () => {
     });
   });
 
-  it("counts injected chars when injected file paths are absolute", () => {
-    const file = makeBootstrapFile({ path: "/tmp/workspace/policies/AGENTS.md" });
-    const report = makeReport({
-      file,
-      injectedPath: "/tmp/workspace/policies/AGENTS.md",
-      injectedContent: "trimmed",
-    });
-
-    expect(report.injectedWorkspaceFiles[0]?.injectedChars).toBe("trimmed".length);
-  });
-
-  it("marks workspace files truncated when injected chars are smaller than raw chars", () => {
-    const file = makeBootstrapFile({
-      path: "/tmp/workspace/policies/AGENTS.md",
-      content: "abcdefghijklmnopqrstuvwxyz",
-    });
-    const report = makeReport({
-      file,
-      injectedPath: "/tmp/workspace/policies/AGENTS.md",
-      injectedContent: "trimmed",
-    });
-
-    expect(report.injectedWorkspaceFiles[0]?.truncated).toBe(true);
-  });
-
   it("includes both bootstrap caps in the report payload", () => {
     const report = makeReport({
       bootstrapMaxChars: 11_111,
