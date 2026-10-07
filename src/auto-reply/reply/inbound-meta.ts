@@ -2,25 +2,29 @@
 import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import {
+  sliceUtf16Safe,
+  truncateUtf16Safe,
+  truncateWithMarker,
+} from "@openclaw/normalization-core/utf16-slice";
 import type { CurrentInboundPromptContext } from "../../agents/embedded-agent-runner/run/params.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
-import { getLoadedChannelPluginById } from "../../channels/plugins/registry-loaded.js";
-import { normalizeAnyChannelId } from "../../channels/registry.js";
 import { resolveSessionGoalDisplayState } from "../../config/sessions/goals.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { sliceUtf16Safe, truncateUtf16Safe } from "../../utils.js";
+import { buildDeliveryFormatPrompt } from "../../infra/outbound/delivery-format-prompt.js";
 import type { EnvelopeFormatOptions } from "../envelope.js";
 import { formatAgentEnvelopeTimestamp } from "../envelope.js";
+import { getRequesterProfile } from "../requester-profile.js";
 import type { TemplateContext } from "../templating.js";
 import {
   formatContextJsonBlock,
   MAX_CONTEXT_JSON_STRING_CHARS,
   neutralizeMarkdownFences,
+  selectInboundHistoryContext,
 } from "./channel-prompt-context.js";
 import { markInboundContextLabel } from "./inbound-context-marker.js";
 
-const MAX_UNTRUSTED_HISTORY_ENTRIES = 20;
 const MAX_UNTRUSTED_TRANSCRIPT_FIELD_CHARS = 500;
 const MAX_ACTIVE_GOAL_OBJECTIVE_CHARS = 200;
 const ACTIVE_GOAL_CONTEXT_PREFIX = "Active goal: ";
@@ -39,6 +43,27 @@ export function formatActiveGoalContext(sessionEntry?: SessionEntry): string | u
       ? objective
       : `${truncateUtf16Safe(objective, MAX_ACTIVE_GOAL_OBJECTIVE_CHARS - 1).trimEnd()}…`;
   return `${ACTIVE_GOAL_CONTEXT_PREFIX}${boundedObjective}${ACTIVE_GOAL_CONTEXT_SUFFIX}`;
+}
+
+const MAX_UNTRUSTED_HISTORY_ENTRIES = 20;
+
+function buildInboundHistoryMediaPromptPayload(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) => {
+    if (!isRecord(entry)) {
+      return [];
+    }
+    const payload = {
+      kind: normalizePromptMetadataString(entry["kind"]),
+      content_type: normalizePromptMetadataString(entry["contentType"]),
+      message_id: normalizePromptMetadataString(entry["messageId"]),
+      has_local_path: normalizePromptMetadataString(entry["path"]) ? true : undefined,
+      has_url: normalizePromptMetadataString(entry["url"]) ? true : undefined,
+    };
+    return Object.values(payload).some((field) => field !== undefined) ? [payload] : [];
+  });
 }
 
 function isQueuedGoalOnlyBlock(block: string, injectedGoals: ReadonlySet<string>): boolean {
@@ -96,37 +121,36 @@ export function refreshActiveGoalContext(
     injectedGoals,
     activeGoalContext,
   });
-  const refreshedResumableText = context.resumableText
-    ? refreshActiveGoalContextText({
-        text: context.resumableText,
-        injectedGoals,
-        activeGoalContext,
-      })
-    : undefined;
+  const refreshVariant = (text: string | undefined) =>
+    text === undefined
+      ? undefined
+      : refreshActiveGoalContextText({
+          text,
+          injectedGoals,
+          activeGoalContext,
+        });
+  const refreshedLeanText = refreshVariant(context.leanText);
+  const refreshedResumableText = refreshVariant(context.resumableText);
+  const refreshedLeanResumableText = refreshVariant(context.leanResumableText);
   if (!refreshedText) {
     return undefined;
   }
   return {
     ...context,
     text: refreshedText,
+    ...(refreshedLeanText !== undefined ? { leanText: refreshedLeanText } : {}),
     ...(refreshedResumableText !== undefined
       ? { resumableText: refreshedResumableText || undefined }
+      : {}),
+    ...(refreshedLeanResumableText !== undefined
+      ? { leanResumableText: refreshedLeanResumableText }
       : {}),
     injectedGoalContexts: activeGoalContext ? [activeGoalContext] : undefined,
   };
 }
 
-function stripNullBytes(value: string): string {
-  return value.replaceAll("\u0000", "");
-}
-
 function normalizePromptMetadataString(value: unknown): string | undefined {
-  const normalized = normalizeOptionalString(value);
-  if (!normalized) {
-    return undefined;
-  }
-  const sanitized = stripNullBytes(normalized);
-  return sanitized || undefined;
+  return normalizeOptionalString(value)?.replaceAll("\u0000", "") || undefined;
 }
 
 function normalizePromptMediaPath(value: unknown): string | undefined {
@@ -152,22 +176,13 @@ function normalizePromptMediaPath(value: unknown): string | undefined {
       return undefined;
     }
   };
-  const decodeInboundMediaId = (id: string): string | undefined => {
+  const inboundMatch = /^media(?::\/\/|\/)inbound\/([^/\\]+)$/i.exec(mediaPath);
+  if (inboundMatch?.[1]) {
     try {
-      return decodeURIComponent(id);
+      return toInboundMediaPath(decodeURIComponent(inboundMatch[1]));
     } catch {
       return undefined;
     }
-  };
-  const canonicalMatch = /^media:\/\/inbound\/([^/\\]+)$/i.exec(mediaPath);
-  if (canonicalMatch?.[1]) {
-    const id = decodeInboundMediaId(canonicalMatch[1]);
-    return id ? toInboundMediaPath(id) : undefined;
-  }
-  const relativeMatch = /^media\/inbound\/([^/\\]+)$/i.exec(mediaPath);
-  if (relativeMatch?.[1]) {
-    const id = decodeInboundMediaId(relativeMatch[1]);
-    return id ? toInboundMediaPath(id) : undefined;
   }
   const normalized = mediaPath.replace(/\\/g, "/");
   if (!normalized.includes("/media/inbound/")) {
@@ -181,40 +196,23 @@ function normalizePromptMetadataStringArray(value: unknown): string[] | undefine
     return undefined;
   }
   const normalized = value
-    .map((entry) => normalizePromptMetadataString(entry))
+    .map(normalizePromptMetadataString)
     .filter((entry): entry is string => Boolean(entry));
   return normalized.length > 0 ? normalized : undefined;
 }
 
 function sanitizePromptBody(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const sanitized = stripNullBytes(value);
-  return sanitized || undefined;
+  return typeof value === "string" ? value.replaceAll("\u0000", "") || undefined : undefined;
 }
 
 const HEAD_TAIL_OMISSION_MARKER = "…[omitted]…";
-const HEAD_TAIL_MARKER_LENGTH = HEAD_TAIL_OMISSION_MARKER.length;
-const MIN_HEAD_TAIL_CHARS = 20;
 
-/**
- * Applies head+tail truncation so the result is ≤ maxChars and the downstream
- * {@link truncateContextJsonString} (prefix-only 2000-char cap) is a no-op.
- * Head and tail portions are sized to keep the body within
- * {@link MAX_CONTEXT_JSON_STRING_CHARS}, preserving actionable tail content
- * that prefix-only truncation would drop.
- */
-function truncateBodyHeadTail(body: string, maxChars = MAX_CONTEXT_JSON_STRING_CHARS): string {
-  if (body.length <= maxChars) {
+// Retain actionable tail content within the downstream JSON string cap.
+function truncateBodyHeadTail(body: string): string {
+  if (body.length <= MAX_CONTEXT_JSON_STRING_CHARS) {
     return body;
   }
-  const available = maxChars - HEAD_TAIL_MARKER_LENGTH;
-  if (available < MIN_HEAD_TAIL_CHARS * 2) {
-    return `${truncateUtf16Safe(body, Math.max(0, maxChars - 14)).trimEnd()}…[truncated]`;
-  }
-  // Budget in UTF-16 code units because truncateContextJsonString enforces
-  // that same cap after JSON serialization.
+  const available = MAX_CONTEXT_JSON_STRING_CHARS - HEAD_TAIL_OMISSION_MARKER.length;
   const headChars = Math.floor(available * 0.6);
   const tailChars = available - headChars;
   const head = truncateUtf16Safe(body, headChars);
@@ -222,22 +220,18 @@ function truncateBodyHeadTail(body: string, maxChars = MAX_CONTEXT_JSON_STRING_C
   return `${head}${HEAD_TAIL_OMISSION_MARKER}${tail}`;
 }
 
-function truncateUntrustedTranscriptField(value: string): string {
-  if (value.length <= MAX_UNTRUSTED_TRANSCRIPT_FIELD_CHARS) {
-    return value;
-  }
-  return `${truncateUtf16Safe(
-    value,
-    Math.max(0, MAX_UNTRUSTED_TRANSCRIPT_FIELD_CHARS - 14),
-  ).trimEnd()}…[truncated]`;
-}
-
 function sanitizeTranscriptField(value: unknown): string | undefined {
   const body = sanitizePromptBody(value);
   if (!body) {
     return undefined;
   }
-  return neutralizeMarkdownFences(truncateUntrustedTranscriptField(body))
+  return neutralizeMarkdownFences(
+    truncateWithMarker(body, MAX_UNTRUSTED_TRANSCRIPT_FIELD_CHARS, {
+      marker: "…[truncated]",
+      reserve: 14,
+      trimEnd: true,
+    }),
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -256,22 +250,6 @@ function sanitizeTranscriptBody(value: unknown): string | undefined {
 function formatChannelStructuredContextLabel(label: unknown): string {
   const normalized = normalizePromptMetadataString(label)?.replace(/\s+/g, " ").trim();
   return normalized ? `${normalized}:` : "Structured object:";
-}
-
-function buildConversationMentionMetadataPayload(
-  ctx: TemplateContext,
-  isDirect: boolean,
-): Record<string, unknown> {
-  return {
-    is_group_chat: !isDirect ? true : undefined,
-    was_mentioned: ctx.WasMentioned === true ? true : undefined,
-    explicitly_mentioned_bot:
-      typeof ctx.ExplicitlyMentionedBot === "boolean" ? ctx.ExplicitlyMentionedBot : undefined,
-    mentioned_user_ids: normalizePromptMetadataStringArray(ctx.MentionedUserIds),
-    mentioned_subteam_ids: normalizePromptMetadataStringArray(ctx.MentionedSubteamIds),
-    implicit_mention_kinds: normalizePromptMetadataStringArray(ctx.ImplicitMentionKinds),
-    mention_source: normalizePromptMetadataString(ctx.MentionSource),
-  };
 }
 
 function formatStructuredContextRelation(value: unknown): string | undefined {
@@ -339,8 +317,6 @@ function formatChatWindowStructuredContext(
   const label = sanitizeTranscriptField(entry.label) ?? "Chat window";
   const relation = formatStructuredContextRelation(entry.payload["relation"]);
   const order = sanitizeTranscriptField(entry.payload["order"]);
-  // Dropping the old "untrusted" qualifier means the parenthetical can now be empty for
-  // plugin entries that omit order/relation; emit a bare label instead of `Chat window ():`.
   const qualifiers = [order, relation].filter(Boolean).join(", ");
   const header = qualifiers ? `${label} (${qualifiers}):` : `${label}:`;
   return [markInboundContextLabel(header), ...lines].join("\n");
@@ -403,7 +379,7 @@ function buildLocationContextPayload(ctx: TemplateContext): Record<string, unkno
   return Object.values(payload).some((value) => value !== undefined) ? payload : undefined;
 }
 
-function buildInboundHistoryMediaPromptPayload(value: unknown): Array<Record<string, unknown>> {
+function readInboundHistoryMediaTypes(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -411,14 +387,8 @@ function buildInboundHistoryMediaPromptPayload(value: unknown): Array<Record<str
     if (!isRecord(entry)) {
       return [];
     }
-    const payload = {
-      kind: normalizePromptMetadataString(entry["kind"]),
-      content_type: normalizePromptMetadataString(entry["contentType"]),
-      message_id: normalizePromptMetadataString(entry["messageId"]),
-      has_local_path: normalizePromptMetadataString(entry["path"]) ? true : undefined,
-      has_url: normalizePromptMetadataString(entry["url"]) ? true : undefined,
-    };
-    return Object.values(payload).some((field) => field !== undefined) ? [payload] : [];
+    const contentType = normalizePromptMetadataString(entry["contentType"]);
+    return contentType ? [contentType] : [];
   });
 }
 
@@ -467,15 +437,12 @@ function isTelegramInboundContext(ctx: TemplateContext): boolean {
   );
 }
 
-function resolveInlineReplyQuote(ctx: TemplateContext): string | undefined {
-  return sanitizeTranscriptField(ctx.ReplyToQuoteText) ?? sanitizeTranscriptBody(ctx.ReplyToBody);
-}
-
 function formatTelegramCurrentMessageContext(ctx: TemplateContext): string | undefined {
   if (!isTelegramInboundContext(ctx)) {
     return undefined;
   }
-  const quote = resolveInlineReplyQuote(ctx);
+  const quote =
+    sanitizeTranscriptField(ctx.ReplyToQuoteText) ?? sanitizeTranscriptBody(ctx.ReplyToBody);
   if (!quote) {
     return undefined;
   }
@@ -535,27 +502,6 @@ function resolveInboundSourceModality(ctx: TemplateContext): string | undefined 
   return ctx.media?.map((media) => resolveMediaType(media.contentType ?? media.kind)).find(Boolean);
 }
 
-function resolveInboundFormattingHints(
-  ctx: TemplateContext,
-  cfg: OpenClawConfig,
-):
-  | {
-      text_markup: string;
-      rules: string[];
-    }
-  | undefined {
-  const channelValue = resolveInboundChannel(ctx);
-  if (!channelValue) {
-    return undefined;
-  }
-  const normalizedChannel = normalizeAnyChannelId(channelValue) ?? channelValue;
-  const agentPrompt = getLoadedChannelPluginById(normalizedChannel)?.agentPrompt;
-  return agentPrompt?.inboundFormattingHints?.({
-    cfg,
-    accountId: normalizePromptMetadataString(ctx.AccountId) ?? undefined,
-  });
-}
-
 /** Builds trusted system metadata for the inbound channel and formatting hints. */
 export function buildInboundMetaSystemPrompt(
   ctx: TemplateContext,
@@ -563,17 +509,9 @@ export function buildInboundMetaSystemPrompt(
   options?: { includeFormattingHints?: boolean },
 ): string {
   const chatType = normalizeChatType(ctx.ChatType);
-  const isDirect = !chatType || chatType === "direct";
 
-  // Keep system metadata strictly free of attacker-controlled strings (sender names, group subjects, etc.).
-  // Those belong in the user-role context blocks this module emits below.
-  // Conversation ids, per-message identifiers, and dynamic flags are also excluded here:
-  // they change on turns/replies and would bust prefix-based prompt caches on providers that
-  // use stable system prefixes. They are included in the user-role conversation info block instead.
-
-  // Resolve channel identity: prefer explicit channel, then surface, then provider.
-  // For webchat/Hub Chat sessions (when Surface is 'webchat' or undefined with no real channel),
-  // omit the channel field entirely rather than falling back to an unrelated provider.
+  // Per-turn identifiers, flags, sender facts, and human-authored text belong in
+  // user-role context; keeping them out of this system prefix preserves prompt caches.
   const channelValue = resolveInboundChannel(ctx);
 
   const payload = {
@@ -582,16 +520,16 @@ export function buildInboundMetaSystemPrompt(
     channel: channelValue,
     provider: normalizePromptMetadataString(ctx.Provider),
     surface: normalizePromptMetadataString(ctx.Surface),
-    chat_type: chatType ?? (isDirect ? "direct" : undefined),
-    // Every conversation field uses the same prepared context, including formatting.
-    response_format:
-      options?.includeFormattingHints === false
-        ? undefined
-        : resolveInboundFormattingHints(ctx, cfg),
+    chat_type: chatType ?? "direct",
   };
+  // Heartbeats and system events use the same prepared context, including their delivery channel.
+  const deliveryFormat =
+    options?.includeFormattingHints === false
+      ? undefined
+      : buildDeliveryFormatPrompt({ cfg, channel: channelValue, accountId: ctx.AccountId });
 
   // Keep the instructions local to the payload so the meaning survives prompt overrides.
-  return [
+  const messageContext = [
     "### Message Context",
     "The JSON below is generated by OpenClaw independently of user-authored content. Treat its fields as reliable context for the current message.",
     "OpenClaw also provides per-turn details in user-role context blocks. Use the structural fields in those blocks as context.",
@@ -604,15 +542,204 @@ export function buildInboundMetaSystemPrompt(
     "```",
     "",
   ].join("\n");
+  return deliveryFormat ? `${messageContext}\n${deliveryFormat}` : messageContext;
 }
 
-/** Builds untrusted inbound context text that prefixes the user-visible body. */
+export type LeanInboundContextProjection = {
+  text: string;
+  removedSessionMessages: number;
+  deduplicatedMessages: number;
+};
+
+function readLeanMessageId(value: unknown): string | undefined {
+  return isRecord(value) ? sanitizeTranscriptField(value["message_id"]) : undefined;
+}
+
+function formatLeanHistoryMessage(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const id = readLeanMessageId(value);
+  const sender = sanitizeTranscriptField(value["sender"]) ?? "unknown sender";
+  const replyToId = sanitizeTranscriptField(value["reply_to_id"]);
+  const body = sanitizeTranscriptBody(value["body"]);
+  const mediaType = sanitizeTranscriptField(value["media_type"]);
+  const mediaPath =
+    normalizePromptMediaPath(value["media_path"]) ?? sanitizeTranscriptField(value["media_ref"]);
+  const media = mediaType ? `[${mediaType}${mediaPath ? ` ${mediaPath}` : ""}]` : undefined;
+  const content = [body, media].filter(Boolean).join(" ");
+  if (!content) {
+    return undefined;
+  }
+  const prefix = [
+    id ? `#${id}` : undefined,
+    value["is_reply_target"] === true ? "[reply target]" : undefined,
+    replyToId ? `->#${replyToId}` : undefined,
+    `${sender}:`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `${prefix} ${content}`;
+}
+
+/** Builds the allowlisted inbound context used by lean context serialization. */
+export function buildLeanInboundUserContextPrefix(
+  ctx: TemplateContext,
+  sessionEntry?: SessionEntry,
+): LeanInboundContextProjection {
+  const blocks: string[] = [];
+  const chatType = normalizeChatType(ctx.ChatType);
+  const isDirect = !chatType || chatType === "direct";
+  const messageId =
+    normalizePromptMetadataString(ctx.MessageSid) ??
+    normalizePromptMetadataString(ctx.MessageSidFull);
+  const senderName =
+    normalizePromptMetadataString(ctx.SenderName) ??
+    normalizePromptMetadataString(ctx.SenderUsername);
+  const senderId = normalizePromptMetadataString(ctx.SenderId);
+  const compactFacts = {
+    message_id: messageId,
+    sender: !isDirect
+      ? {
+          name: senderName,
+          id: senderId,
+          is_bot: ctx.SenderIsBot === true ? true : undefined,
+        }
+      : undefined,
+    reply_to_id: normalizePromptMetadataString(ctx.ReplyToId),
+    thread_id:
+      ctx.MessageThreadId != null
+        ? normalizePromptMetadataString(String(ctx.MessageThreadId))
+        : undefined,
+    thread_label: normalizePromptMetadataString(ctx.ThreadLabel),
+    was_mentioned: typeof ctx.WasMentioned === "boolean" ? ctx.WasMentioned : undefined,
+    explicitly_mentioned_bot:
+      typeof ctx.ExplicitlyMentionedBot === "boolean" ? ctx.ExplicitlyMentionedBot : undefined,
+    mentioned_user_ids: normalizePromptMetadataStringArray(ctx.MentionedUserIds),
+    mentioned_subteam_ids: normalizePromptMetadataStringArray(ctx.MentionedSubteamIds),
+    mention_source: normalizePromptMetadataString(ctx.MentionSource),
+  };
+  if (Object.values(compactFacts).some((value) => value !== undefined)) {
+    blocks.push(`Context: ${JSON.stringify(compactFacts)}`);
+  }
+
+  const replyBody = sanitizeTranscriptBody(ctx.ReplyToBody);
+  const replySender = normalizePromptMetadataString(ctx.ReplyToSender);
+  if (replyBody || replySender) {
+    blocks.push(
+      `Reply target: ${JSON.stringify({
+        sender: replySender,
+        body: replyBody,
+        is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
+      })}`,
+    );
+  }
+
+  const threadStarterBody = sanitizePromptBody(ctx.ThreadStarterBody);
+  if (threadStarterBody) {
+    blocks.push(`Thread starter: ${JSON.stringify({ body: threadStarterBody })}`);
+  }
+
+  const forwardedFrom = normalizePromptMetadataString(ctx.ForwardedFrom);
+  if (forwardedFrom) {
+    blocks.push(
+      `Forwarded: ${JSON.stringify({
+        from: forwardedFrom,
+        type: normalizePromptMetadataString(ctx.ForwardedFromType),
+        username: normalizePromptMetadataString(ctx.ForwardedFromUsername),
+        title: normalizePromptMetadataString(ctx.ForwardedFromTitle),
+      })}`,
+    );
+  }
+
+  const location = buildLocationContextPayload(ctx);
+  if (location) {
+    blocks.push(`Location: ${JSON.stringify(location)}`);
+  }
+
+  const seenMessageIds = new Set<string>();
+  const historyLines: string[] = [];
+  let removedSessionMessages = 0;
+  let deduplicatedMessages = 0;
+  const addHistoryMessage = (value: unknown) => {
+    const id = readLeanMessageId(value);
+    if (id?.startsWith("session:")) {
+      removedSessionMessages += 1;
+      return;
+    }
+    if (id && seenMessageIds.has(id)) {
+      deduplicatedMessages += 1;
+      return;
+    }
+    const line = formatLeanHistoryMessage(value);
+    if (!line) {
+      return;
+    }
+    if (id) {
+      seenMessageIds.add(id);
+    }
+    historyLines.push(line);
+  };
+
+  for (const entry of ctx.ChannelStructuredContext ?? []) {
+    if (isChatWindowStructuredContext(entry)) {
+      for (const message of Array.isArray(entry.payload["messages"])
+        ? entry.payload["messages"]
+        : []) {
+        addHistoryMessage(message);
+      }
+      continue;
+    }
+    blocks.push(
+      formatContextJsonBlock(`${sanitizeTranscriptField(entry.label) ?? "Channel context"}:`, {
+        type: normalizePromptMetadataString(entry.type),
+        payload: entry.payload,
+      }),
+    );
+  }
+
+  for (const entry of (ctx.InboundHistory ?? []).slice(-MAX_UNTRUSTED_HISTORY_ENTRIES)) {
+    addHistoryMessage({
+      message_id: entry.messageId,
+      sender: entry.sender,
+      body: entry.body,
+      media_type:
+        buildInboundHistoryMediaPromptPayload(entry.media)
+          .map((media) => media["content_type"])
+          .filter((value): value is string => typeof value === "string")
+          .join(", ") || undefined,
+    });
+  }
+  if (historyLines.length > 0) {
+    blocks.push(["History:", ...historyLines].join("\n"));
+  }
+
+  const activeGoalContext = formatActiveGoalContext(sessionEntry);
+  if (activeGoalContext) {
+    blocks.push(activeGoalContext);
+  }
+  const currentMessageContext = formatTelegramCurrentMessageContext(ctx);
+  if (currentMessageContext) {
+    blocks.push(currentMessageContext);
+  }
+
+  return {
+    text: blocks.filter(Boolean).join("\n"),
+    removedSessionMessages,
+    deduplicatedMessages,
+  };
+}
+
+/** Builds per-turn context with host-generated structural facts and untrusted human content. */
 export function buildInboundUserContextPrefix(
   ctx: TemplateContext,
   envelope?: EnvelopeFormatOptions,
   sessionEntry?: SessionEntry,
 ): string {
   const blocks: string[] = [];
+  const appendJsonContext = (label: string, payload: unknown) => {
+    blocks.push(formatContextJsonBlock(markInboundContextLabel(label), payload));
+  };
   const chatType = normalizeChatType(ctx.ChatType);
   const isDirect = !chatType || chatType === "direct";
   const directChannelValue = resolveInboundChannel(ctx);
@@ -625,8 +752,7 @@ export function buildInboundUserContextPrefix(
   const messageIdFull = normalizePromptMetadataString(ctx.MessageSidFull);
   const resolvedMessageId = messageId ?? messageIdFull;
   const timestampStr = formatConversationTimestamp(ctx.Timestamp, envelope);
-  const inboundHistory = Array.isArray(ctx.InboundHistory) ? ctx.InboundHistory : [];
-  const boundedHistory = inboundHistory.slice(-MAX_UNTRUSTED_HISTORY_ENTRIES);
+  const { boundedHistory, historyLabel, truncated } = selectInboundHistoryContext(ctx);
   const replyChainPayload = buildReplyChainPayload(ctx, envelope);
   const structuredContext = Array.isArray(ctx.ChannelStructuredContext)
     ? ctx.ChannelStructuredContext
@@ -646,6 +772,7 @@ export function buildInboundUserContextPrefix(
   const senderE164 = normalizePromptMetadataString(ctx.SenderE164);
   const senderIdDigits = senderId?.replace(/\D/gu, "");
   const senderE164Digits = senderE164?.replace(/\D/gu, "");
+  const requester = getRequesterProfile(ctx);
   const senderIdentity = {
     id: senderId,
     name: normalizePromptMetadataString(ctx.SenderName),
@@ -657,11 +784,16 @@ export function buildInboundUserContextPrefix(
   // Keep volatile conversation/message identifiers in the user-role block so the system
   // prompt stays byte-stable across task-scoped sessions and reply turns.
   const conversationInfo = {
+    requester_profile: requester
+      ? { id: requester.id, display_name: sanitizeTranscriptField(requester.displayName) }
+      : undefined,
+    // Inside the marked block so display, history and memory strippers drop it with the rest.
+    requester_profile_hint: requester
+      ? 'requester_profile is the verified linked requester. For "assign to me", use sessions assign_owner with ownerType="human" and ownerId=requester_profile.id, if available.'
+      : undefined,
     chat_id: shouldIncludeConversationInfo ? normalizeOptionalString(ctx.OriginatingTo) : undefined,
     message_id: shouldIncludeConversationInfo ? resolvedMessageId : undefined,
-    reply_to_id: shouldIncludeConversationInfo
-      ? normalizePromptMetadataString(ctx.ReplyToId)
-      : undefined,
+    reply_to_id: shouldIncludeConversationInfo ? replyToId : undefined,
     conversation_label: isDirect ? undefined : normalizePromptMetadataString(ctx.ConversationLabel),
     sender: shouldIncludeConversationInfo
       ? Object.values(senderIdentity).some((value) => value !== undefined)
@@ -678,27 +810,28 @@ export function buildInboundUserContextPrefix(
     inbound_event_kind: ctx.InboundEventKind,
     topic_id:
       ctx.MessageThreadId != null
-        ? (normalizePromptMetadataString(String(ctx.MessageThreadId)) ?? undefined)
+        ? normalizePromptMetadataString(String(ctx.MessageThreadId))
         : undefined,
-    topic_name: normalizePromptMetadataString(ctx.TopicName) ?? undefined,
+    topic_name: normalizePromptMetadataString(ctx.TopicName),
     is_forum: ctx.IsForum === true ? true : undefined,
-    ...buildConversationMentionMetadataPayload(ctx, isDirect),
+    is_group_chat: !isDirect ? true : undefined,
+    was_mentioned: ctx.WasMentioned === true ? true : undefined,
+    explicitly_mentioned_bot:
+      typeof ctx.ExplicitlyMentionedBot === "boolean" ? ctx.ExplicitlyMentionedBot : undefined,
+    mentioned_user_ids: normalizePromptMetadataStringArray(ctx.MentionedUserIds),
+    mentioned_subteam_ids: normalizePromptMetadataStringArray(ctx.MentionedSubteamIds),
+    implicit_mention_kinds: normalizePromptMetadataStringArray(ctx.ImplicitMentionKinds),
+    mention_source: normalizePromptMetadataString(ctx.MentionSource),
     history_count: boundedHistory.length > 0 ? boundedHistory.length : undefined,
-    history_truncated: inboundHistory.length > MAX_UNTRUSTED_HISTORY_ENTRIES ? true : undefined,
+    history_truncated: truncated ? true : undefined,
   };
   if (Object.values(conversationInfo).some((v) => v !== undefined)) {
-    blocks.push(
-      formatContextJsonBlock(markInboundContextLabel("Conversation info:"), conversationInfo),
-    );
+    appendJsonContext("Conversation info:", conversationInfo);
   }
 
   const threadStarterBody = sanitizePromptBody(ctx.ThreadStarterBody);
   if (threadStarterBody) {
-    blocks.push(
-      formatContextJsonBlock(markInboundContextLabel("Thread starter:"), {
-        body: threadStarterBody,
-      }),
-    );
+    appendJsonContext("Thread starter:", { body: threadStarterBody });
   }
 
   const rawReplyToBody = sanitizePromptBody(ctx.ReplyToBody);
@@ -706,21 +839,14 @@ export function buildInboundUserContextPrefix(
   const replyToSender = normalizePromptMetadataString(ctx.ReplyToSender);
   const hasReplyTargetMetadata = Boolean(replyToId || replyToSender || replyToBody);
   if (replyChainPayload.length > 0 && !chatWindowCoversReplyContext && !currentMessageContext) {
-    blocks.push(
-      formatContextJsonBlock(
-        markInboundContextLabel("Reply chain of current user message (nearest first):"),
-        replyChainPayload,
-      ),
-    );
+    appendJsonContext("Reply chain of current user message (nearest first):", replyChainPayload);
   } else if (hasReplyTargetMetadata && !chatWindowCoversReplyContext && !currentMessageContext) {
-    blocks.push(
-      formatContextJsonBlock(markInboundContextLabel("Reply target of current user message:"), {
-        message_id: replyToId,
-        sender_label: replyToSender,
-        is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
-        body: replyToBody || undefined,
-      }),
-    );
+    appendJsonContext("Reply target of current user message:", {
+      message_id: replyToId,
+      sender_label: replyToSender,
+      is_quote: ctx.ReplyToIsQuote === true ? true : undefined,
+      body: replyToBody || undefined,
+    });
   }
 
   const forwardedFrom = normalizePromptMetadataString(ctx.ForwardedFrom);
@@ -734,17 +860,12 @@ export function buildInboundUserContextPrefix(
     date_ms: typeof ctx.ForwardedDate === "number" ? ctx.ForwardedDate : undefined,
   };
   if (forwardedFrom) {
-    blocks.push(
-      formatContextJsonBlock(
-        markInboundContextLabel("Forwarded message context:"),
-        forwardedContext,
-      ),
-    );
+    appendJsonContext("Forwarded message context:", forwardedContext);
   }
 
   const locationContext = buildLocationContextPayload(ctx);
   if (locationContext) {
-    blocks.push(formatContextJsonBlock(markInboundContextLabel("Location:"), locationContext));
+    appendJsonContext("Location:", locationContext);
   }
 
   for (const entry of structuredContext) {
@@ -756,27 +877,16 @@ export function buildInboundUserContextPrefix(
       blocks.push(chatWindow);
       continue;
     }
-    blocks.push(
-      formatContextJsonBlock(
-        markInboundContextLabel(formatChannelStructuredContextLabel(entry.label)),
-        {
-          source: normalizePromptMetadataString(entry.source),
-          type: normalizePromptMetadataString(entry.type),
-          payload: entry.payload,
-        },
-      ),
-    );
+    appendJsonContext(formatChannelStructuredContextLabel(entry.label), {
+      source: normalizePromptMetadataString(entry.source),
+      type: normalizePromptMetadataString(entry.type),
+      payload: entry.payload,
+    });
   }
 
   if (boundedHistory.length > 0 && !chatWindowCoversHistory) {
     const historyLines = boundedHistory.flatMap((entry) => {
-      const mediaTypes = [
-        ...new Set(
-          buildInboundHistoryMediaPromptPayload(entry.media)
-            .map((media) => media["content_type"])
-            .filter((value): value is string => typeof value === "string"),
-        ),
-      ];
+      const mediaTypes = [...new Set(readInboundHistoryMediaTypes(entry.media))];
       const line = formatChatWindowMessage(
         {
           message_id: entry.messageId,
@@ -790,9 +900,7 @@ export function buildInboundUserContextPrefix(
       return line ? [line] : [];
     });
     if (historyLines.length > 0) {
-      blocks.push(
-        [markInboundContextLabel("Chat history since last reply:"), ...historyLines].join("\n"),
-      );
+      blocks.push([markInboundContextLabel(historyLabel), ...historyLines].join("\n"));
     }
   }
 
@@ -805,6 +913,5 @@ export function buildInboundUserContextPrefix(
     blocks.push(currentMessageContext);
   }
 
-  return blocks.filter(Boolean).join("\n\n");
+  return blocks.join("\n\n");
 }
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

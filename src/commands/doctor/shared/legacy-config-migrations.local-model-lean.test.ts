@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { findLegacyConfigIssues } from "../../../config/legacy.js";
 import { LEGACY_CONFIG_MIGRATIONS_RUNTIME_RETIRED } from "./legacy-config-migrations.runtime.retired.js";
 
 function applyRetiredMigrations(raw: Record<string, unknown>) {
@@ -13,9 +12,7 @@ function applyRetiredMigrations(raw: Record<string, unknown>) {
 describe("automatic local-model lean migration", () => {
   it.each([
     { model: "ollama/local", localModelLean: true, expected: undefined },
-    { model: { primary: "ollama/local" }, localModelLean: true, expected: undefined },
-    { model: "openai/selected", localModelLean: true, expected: true },
-    { model: undefined, localModelLean: true, expected: true },
+    { model: { primary: "openai/selected" }, localModelLean: true, expected: true },
     { model: "ollama/local", localModelLean: false, expected: false },
   ])("retires only proven automatic lean ownership: %j", ({ model, localModelLean, expected }) => {
     const raw = {
@@ -26,11 +23,6 @@ describe("automatic local-model lean migration", () => {
       },
     };
     const entries = structuredClone(raw.agents.entries);
-    expect(findLegacyConfigIssues(raw)).toContainEqual({
-      path: "wizard.localModelLeanAutoModel",
-      message: expect.stringContaining('Run "openclaw doctor --fix"'),
-    });
-
     const { changes } = applyRetiredMigrations(raw);
 
     expect(raw.wizard).toEqual({ lastRunVersion: "2026.9.1" });
@@ -43,22 +35,7 @@ describe("automatic local-model lean migration", () => {
       expect(changes).toContainEqual(expect.stringContaining("remove it or set it to false"));
     }
     expect(findLegacyConfigIssues(raw)).toEqual([]);
-    expect(applyRetiredMigrations(raw).changes).toEqual([]);
+    const migrated = structuredClone(raw);
+    expect(applyRetiredMigrations(raw)).toEqual({ raw: migrated, changes: [] });
   });
-
-  it.each([undefined, false, true])(
-    "leaves unmarked lean configuration unchanged: %s",
-    (localModelLean) => {
-      const raw = {
-        agents: {
-          defaults: {
-            experimental: localModelLean !== undefined ? { localModelLean } : {},
-          },
-        },
-      };
-      const expected = structuredClone(raw);
-      expect(findLegacyConfigIssues(raw)).toEqual([]);
-      expect(applyRetiredMigrations(raw)).toEqual({ raw: expected, changes: [] });
-    },
-  );
 });

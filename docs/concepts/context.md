@@ -21,7 +21,7 @@ Context is _not the same thing_ as "memory": memory can be stored on disk and re
 
 - `/status` → quick "how full is my window?" view + session settings.
 - `/context list` → what's injected + rough sizes (per file + totals).
-- `/context detail` → deeper breakdown: per-file, per-tool schema sizes, per-skill entry sizes, system prompt size, and compactable transcript message counts.
+- `/context detail` → deeper breakdown: per-file, per-tool schema sizes, per-skill entry sizes, system prompt size, context serialization, and compactable transcript message counts.
 - `/context map` → WinDirStat-style treemap image of the current session's tracked context contributors.
 - `/usage tokens` → append per-reply usage footer to normal replies.
 - `/compact` → summarize older history into a compact entry to free window space.
@@ -108,7 +108,7 @@ Everything the model receives counts, including:
 
 ## How OpenClaw builds the system prompt
 
-The system prompt is **OpenClaw-owned** and rebuilt each run. It includes:
+The system prompt is **OpenClaw-owned** and rendered each run. It includes:
 
 - Tool list + short descriptions.
 - Skills list (metadata only; see below).
@@ -118,6 +118,12 @@ The system prompt is **OpenClaw-owned** and rebuilt each run. It includes:
 - Injected workspace bootstrap files under **Project Context**.
 
 Full breakdown: [System Prompt](/concepts/system-prompt).
+
+On supported direct Anthropic API-key routes, OpenClaw keeps the stable system
+prefix pinned for the session and sends changed sections as system messages
+after the current user turn. The dynamic suffix keeps updating normally.
+Changing the route or compacting history starts a new prefix series; after a
+Gateway restart, a changed stable prefix also starts a new series.
 
 ## Injected workspace files (Project Context)
 
@@ -136,6 +142,8 @@ When truncation occurs, the runtime injects a concise in-prompt notice under Pro
 ## Skills: injected vs loaded on-demand
 
 The system prompt includes a compact **skills list** (name + description + location). This list has real overhead.
+
+`/context` counts the catalog included in the rendered system prompt, not every installed skill. In the embedded runtime without Code Mode, denying both `read` and `skills_read` omits the catalog and reports zero skills.
 
 Skill instructions are _not_ included by default. The model is expected to `read` the skill's `SKILL.md` **only when needed**.
 
@@ -177,8 +185,22 @@ remains an unchanged cached prefix. Retained carriers count toward the context
 window until compaction, which does not split a user message from its carrier.
 Carriers contain only the delimited context body; interpretation guidance lives
 once in the stable system prompt.
-Other transports keep transient metadata at the request tail to preserve their cached
-history prefix when the next user turn removes it.
+
+Supported direct Anthropic API-key routes also preserve runtime context
+append-only, using system messages after the user turn and its other queued
+context. These messages need no delimiters and clear at the next user message:
+they remain in the transcript but no longer consume input tokens. Persistent
+system-prompt updates use the same system-message channel without clearing.
+Tool results and queued extension context also clear earlier copies; OpenClaw
+renews the current user turn's runtime context after those continuations.
+Other prefix-binding Claude routes retain their delimited user-role carriers.
+See [Anthropic retained thinking](/providers/anthropic#tool-calls-and-retained-thinking)
+for supported models and route limits.
+
+Transient carriers remain the cheaper shape on routes without this capability
+when thinking does not bind the prefix. Those routes keep metadata at the
+request tail and remove it on the next user turn, preserving the cached history
+without retaining old context or repeated cache-read charges.
 
 Docs: [Session](/concepts/session), [Compaction](/concepts/compaction), [Session pruning](/concepts/session-pruning).
 
@@ -198,7 +220,7 @@ pluggable interface, lifecycle hooks, and configuration.
 - `System prompt (run)` = captured from the last embedded (tool-capable) run and persisted in the session store.
 - `System prompt (estimate)` = computed on the fly when no run report exists (or when running via a CLI backend that doesn't generate the report).
 
-Either way, it reports sizes and top contributors; it does **not** dump the full system prompt or tool schemas. In detailed mode, it also compares the session transcript with the same real-conversation message predicate used by compaction, so high prompt/cache usage is easier to distinguish from compactable conversation history.
+Either way, it reports sizes and top contributors; it does **not** dump the full system prompt or tool schemas. In detailed mode, it also shows the selected `contextSerialization` value and source, the default and serialized current-turn character counts, durable-ID removal counts, and provider input tokens when available. It compares the session transcript with the same real-conversation message predicate used by compaction, so high prompt/cache usage is easier to distinguish from compactable conversation history.
 
 ## Related
 

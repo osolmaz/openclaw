@@ -41,6 +41,8 @@ Override in `~/.openclaw/openclaw.json`:
 
 Per-agent override: `agents.entries.*.workspace`. To keep `main` at an existing shared root in a multi-agent roster, pin `agents.entries.main.workspace` to that root explicitly; changing `agents.defaults.workspace` alone sets the base for unpinned entries.
 
+Run workspace selection rejects an explicitly supplied blank or invalid agent ID. Omit the selector to use configured ownership, or supply the intended agent ID.
+
 `openclaw onboard`, `openclaw configure`, or `openclaw setup` create the workspace and seed the bootstrap files if they are missing.
 
 <Note>
@@ -118,14 +120,19 @@ These live under `~/.openclaw/` and should NOT be committed to the workspace rep
 
 If you need to migrate sessions or config, copy them separately and keep them out of version control.
 
-Older OpenClaw releases wrote `openclaw-workspace-state.json`,
-`.openclaw/workspace-state.json`, and `.attested` workspace sidecars. Current
+Older OpenClaw releases wrote `openclaw-workspace-state.json` and `.attested`
+workspace sidecars. Current
 runtime uses only the shared SQLite database for that state. If Doctor reports
 one of these files, run `openclaw doctor --fix`; Doctor imports valid legacy
 state and deletes a source only after verifying the database rows. Empty reserved
 hashed files under `workspace-attestations/` are discarded because they contain
 no importable state; other unreadable sources stay in place and Doctor names
 their paths.
+
+The pre-July `.openclaw/workspace-state.json` layout is outside the supported
+migration window. Upgrade through `2026.9.7` and run `openclaw doctor --fix` there
+before updating; current Doctor leaves that file untouched. See the
+[retention policy](/gateway/doctor/config-migrations#retention-policy).
 
 ## Git backup (recommended, private)
 
@@ -230,6 +237,34 @@ Suggested `.gitignore` starter:
     only when you also need legacy migration inputs or archive/support artifacts.
   </Step>
 </Steps>
+
+## Agent Profile workspace context
+
+An Agent Profile can apply an OpenClaw-owned workspace-context policy through
+`spec["openclaw.ai"].prompt.workspaceContext`. The portable `agentprofiles`
+package treats this section as opaque data. OpenClaw owns its field meanings,
+validation, inheritance, and runtime behavior.
+
+The policy can include or exclude the canonical `AGENTS.md`, `SOUL.md`,
+`IDENTITY.md`, and `USER.md` sections, set per-section character limits, and
+choose `overflow: "truncate"` or `overflow: "error"`. It can also name
+additional files by exact workspace-relative path. OpenClaw never scans for
+undeclared additional files, and guarded loading rejects paths outside the
+workspace.
+
+Per-file limits apply before the aggregate limit. Protected `overflow: "error"`
+content must fit in full. Remaining truncatable content shares the available
+aggregate budget in proportion to its bounded size. The stored context report
+shows sizes and truncation causes without storing file contents.
+
+`BOOTSTRAP.md`, `BOOT.md`, and memory keep their separate lifecycle and privacy
+rules. Conversation history, skills, tool schemas, and tool selection also have
+separate controls. The built-in `openclaw/small` profile caps its managed
+workspace-file context at 8,000 characters, a rough 2,000-token proxy rather
+than an exact tokenizer limit.
+
+See [Agent Profiles](/concepts/agent-profiles) and
+[workspace and bootstrap configuration](/gateway/config-agents/workspace-and-bootstrap).
 
 ## Advanced notes
 

@@ -9,13 +9,24 @@ title: "Control UI and API keys"
 
 ## Configure providers in the Control UI
 
-Open **Settings → Models** in the Control UI to add, replace, or remove provider API keys stored in `models.providers.<id>.apiKey`. The page identifies whether each API key comes from OpenClaw config or an environment variable without displaying the credential. Environment-provided keys remain managed by the gateway process environment.
+Open **Settings → Models** in the Control UI to add, replace, or remove provider
+API keys. The page and `openclaw models auth paste-api-key` use the same credential
+writer: key material stays in the auth store, and configured providers reference
+the saved profile. Environment-provided keys remain managed by the Gateway
+process environment. The page shows credential sources without revealing keys.
+
+Saving a key and refreshing the catalog are separate outcomes. If refresh fails,
+the saved key remains; follow the reported recovery step. Removing a stored key
+keeps model defaults and provider connection settings. See
+[Auth profiles](/cli/models#auth-profiles) for the matching CLI commands.
 
 Provider controls appear as soon as credentials, the model catalog, and configuration are ready. Usage and local costs load independently afterward, so a slow usage response does not block provider settings.
 
+After an account's quota recovers, model availability reflects the recovered account even if a catalog refresh began while it was blocked.
+
 Open **Model Setup** from the page header to inspect detected AI access. When available, it shows the authentication method (API key or account sign-in) and the actual email address reported by the provider or local runtime. API keys and tokens stay hidden.
 
-Use **Test connection** to run a live provider probe and see latency or a categorized authentication, rate-limit, billing, timeout, or response error. A probe makes a real provider request and may consume a small number of tokens. OAuth and token profiles can also be logged out from the provider card.
+Use **Test connection** to run a live provider check and see latency or a categorized authentication, rate-limit, billing, timeout, or response error. A check makes a real provider request and may consume a small number of tokens. OAuth and token profiles can also be logged out from the provider card.
 
 The **Defaults** card manages the primary model, utility model, first fallback, thinking level, and Fast mode from the configured model catalog. Changes save automatically to the existing `agents.defaults` settings. For the utility model, **Auto** leaves the setting unset and **Disabled** stores an empty string to turn utility routing off.
 

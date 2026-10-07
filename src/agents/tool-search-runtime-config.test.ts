@@ -5,10 +5,13 @@ import { resolveAgentRuntimeToolConfig } from "./tool-runtime-config.js";
 import { resolveAgentToolSearchRuntimeConfig } from "./tool-search-runtime-config.js";
 import { resolveAgentToolSurfacePlan } from "./tool-surface-plan.js";
 
-function createRuntimeConfigPair(localModelLean = true) {
+function createRuntimeConfigPair(useSmallProfile = true, localModelLean = true) {
   const sourceConfig = {
     agents: {
-      defaults: { experimental: { localModelLean } },
+      defaults: {
+        agentProfileId: useSmallProfile ? "openclaw/small" : "openclaw/base",
+        experimental: { localModelLean },
+      },
       entries: { main: { default: true } },
     },
     plugins: {
@@ -44,14 +47,14 @@ describe("resolveAgentToolSearchRuntimeConfig", () => {
   });
 
   it.each([true, false])(
-    "applies Tool Search after selecting the resolved snapshot for forced replies (lean: %s)",
-    (localModelLean) => {
-      const { runtimeConfig, sourceConfig } = createRuntimeConfigPair(localModelLean);
+    "applies Tool Search after selecting the resolved snapshot for forced replies (small profile: %s)",
+    (useSmallProfile) => {
+      const { runtimeConfig, sourceConfig } = createRuntimeConfigPair(useSmallProfile);
       setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
 
       const resolved = resolveAgentToolSurfacePlan({
         config: sourceConfig,
-        model: localModelLean ? undefined : { toolSearchMode: "tools" },
+        model: useSmallProfile ? undefined : { toolSearchMode: "tools" },
         forceDirectMessageTool: true,
         toolsEnabled: true,
         isRawModelRun: false,
@@ -97,7 +100,7 @@ describe("resolveAgentToolSearchRuntimeConfig", () => {
     const { runtimeConfig, sourceConfig } = createRuntimeConfigPair();
     setRuntimeConfigSnapshot(runtimeConfig, sourceConfig);
     const explicitConfig = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       plugins: {
         entries: {
           "example-plugin": { config: { marker: "explicit" } },
@@ -111,7 +114,7 @@ describe("resolveAgentToolSearchRuntimeConfig", () => {
 
   it("uses the input config when no runtime snapshot exists", () => {
     const config = {
-      agents: { entries: { main: { default: true } } },
+      agents: { entries: { main: {} } },
       tools: { toolSearch: false },
     } as OpenClawConfig;
 

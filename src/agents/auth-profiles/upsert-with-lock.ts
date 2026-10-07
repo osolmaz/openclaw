@@ -1,5 +1,6 @@
 /** Locked auth profile writes and attempt-scoped compensation. */
 import { isDeepStrictEqual } from "node:util";
+import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import { AUTH_STORE_VERSION } from "./constants.js";
 import { normalizeAuthProfileCredential } from "./credential-normalize.js";
 import { withOAuthProfileLock, withOAuthProfileLocks } from "./oauth-profile-lock.js";
@@ -20,12 +21,6 @@ import {
 import { findPersistedAuthProfileCredential } from "./store.js";
 import type { AuthProfileCredential, AuthProfileStore } from "./types.js";
 import { resetAuthProfileFailureState } from "./usage-state.js";
-
-function throwAuthProfileUpdateError(): never {
-  throw new Error(
-    "Failed to update auth profile store; the auth store lock may be busy. Wait a moment and retry.",
-  );
-}
 
 function restoresFencedOAuthRefreshGeneration(params: {
   profileId: string;
@@ -130,6 +125,13 @@ function supersedesOAuthRefreshGenerationObservedAtAdmission(params: {
 }
 
 type PersistAuthProfileBatchParams = {
+  /** Revalidate the calling operation after lock acquisition, at the write boundary. */
+  beforeWrite?: () => void;
+  /** Revalidate a targeted profile identity under the same transaction as the write. */
+  validateCurrentCredential?: (
+    profileId: string,
+    credential: AuthProfileCredential | undefined,
+  ) => void;
   profiles: readonly {
     profileId: string;
     credential: AuthProfileCredential;
@@ -189,6 +191,7 @@ export async function persistAuthProfileBatch(
       const preparedOwner = runAuthProfileWriteTransaction(
         params.agentDir,
         (database, owner) => {
+          params.beforeWrite?.();
           storeWasAbsent =
             inspectPersistedAuthProfileStoreRaw(params.agentDir, database).status === "missing";
           stateWasAbsent =
@@ -197,6 +200,7 @@ export async function persistAuthProfileBatch(
             loadPersistedAuthProfileStore(params.agentDir, { database }) ??
             ({ version: AUTH_STORE_VERSION, profiles: {} } satisfies AuthProfileStore);
           for (const [profileId, entry] of profiles) {
+            params.validateCurrentCredential?.(profileId, next.profiles[profileId]);
             if (!entry.replaceExisting && Object.hasOwn(next.profiles, profileId)) {
               continue;
             }
@@ -338,6 +342,8 @@ export async function persistAuthProfileBatch(
 
 type AuthProfileUpsertParams = {
   profileId: string;
+  validateCurrentCredential?: (credential: AuthProfileCredential | undefined) => void;
+  preserveApiKeyMetadata?: boolean;
   credential: AuthProfileCredential;
   agentDir?: string;
   stateDir?: string;
@@ -351,7 +357,6 @@ export async function upsertAuthProfileWithLock(
   const observed = loadAuthProfileWriteAuthority(params, params.profileId);
   let rejectedFencedGeneration = false;
   const update = async () => {
-    const currentAuthority = loadAuthProfileWriteAuthority(params, params.profileId);
     return await updateAuthProfileStoreWithLock({
       agentDir: params.agentDir,
       sharedStoreWrite: true,
@@ -360,7 +365,14 @@ export async function upsertAuthProfileWithLock(
         filterExternalAuthProfiles: false,
         syncExternalCli: false,
       },
-      updater: (store) => {
+      updater: (store, owner, sharedStore) => {
+        const currentAuthority =
+          store.profiles[params.profileId] ??
+          (owner && owner.databasePath !== owner.sharedDatabasePath
+            ? sharedStore?.profiles[params.profileId]
+            : undefined);
+        // Consumers can reject a changed profile kind under the same lock as the write.
+        params.validateCurrentCredential?.(store.profiles[params.profileId]);
         if (
           supersedesOAuthRefreshGenerationObservedAtAdmission({
             profileId: params.profileId,
@@ -378,7 +390,18 @@ export async function upsertAuthProfileWithLock(
           rejectedFencedGeneration = true;
           return false;
         }
-        store.profiles[params.profileId] = credential;
+        const existing = store.profiles[params.profileId];
+        if (
+          params.preserveApiKeyMetadata &&
+          existing?.type === "api_key" &&
+          credential.type === "api_key" &&
+          normalizeProviderId(existing.provider) === normalizeProviderId(credential.provider)
+        ) {
+          const { key: _key, keyRef: _keyRef, ...metadata } = existing;
+          store.profiles[params.profileId] = { ...metadata, ...credential };
+        } else {
+          store.profiles[params.profileId] = credential;
+        }
         return true;
       },
     });
@@ -400,6 +423,8 @@ export async function upsertAuthProfileWithLockOrThrow(
 ): Promise<void> {
   const updated = await upsertAuthProfileWithLock(params);
   if (!updated) {
-    throwAuthProfileUpdateError();
+    throw new Error(
+      "Failed to update auth profile store; the auth store lock may be busy. Wait a moment and retry.",
+    );
   }
 }

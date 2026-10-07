@@ -1,4 +1,3 @@
-// Single agent-turn command registration; delegates execution to the Gateway-backed agent command.
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
 import type { Command } from "commander";
 import { formatDocsLink } from "../../../packages/terminal-core/src/links.js";
@@ -7,12 +6,8 @@ import { THINKING_LEVELS_HELP } from "../../auto-reply/thinking.shared.js";
 import { inheritOptionFromParent } from "../command-options.js";
 import { measureCliCommandStartup } from "../command-startup-timing.js";
 import { formatHelpExamples } from "../help-format.js";
+import { collectOption } from "./helpers.js";
 
-function collectFallback(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
-/** Register `openclaw agent` for one Gateway-backed agent turn. */
 export function registerAgentTurnCommand(
   program: Command,
   args: { agentChannelOptions: string },
@@ -118,7 +113,11 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
     .option("--isolated", "Ignore the ambient config and run against exec defaults only", false)
     .option("--model <provider/model>", "Use an explicit primary model for this run")
     .option("--code-mode <mode>", "Tool mode: direct | auto | code")
-    .option("--local-model-lean", "Use the reduced local-model tool surface")
+    .option(
+      "--agent-profile <id>",
+      "Agent Profile: auto | openclaw/base | openclaw/small | openclaw/medium | openclaw/large",
+    )
+    .option("--local-model-lean", "Deprecated alias for --agent-profile openclaw/small", false)
     .option(
       "--thinking <level>",
       `Thinking level: ${THINKING_LEVELS_HELP.replaceAll("|", " | ")} where supported`,
@@ -126,7 +125,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
     .option(
       "--fallback <provider/model>",
       "Add an ordered fallback model (repeatable; requires --model)",
-      collectFallback,
+      collectOption,
       [],
     )
     .option("--auth-env-only", "Use provider credentials from environment variables only", false)
@@ -143,12 +142,12 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
             "Read a prompt file and set the workspace.",
           ],
           [
-            'openclaw agent exec "Summarize this repo" --model openai/gpt-5.6-sol --fallback anthropic/claude-sonnet-4-6 --json',
+            'openclaw agent exec "Summarize this repo" --model openai/gpt-6-astra --fallback anthropic/claude-sonnet-4-6 --json',
             "Use an explicit fallback chain and JSON output.",
           ],
           [
-            'openclaw agent exec "Inspect this repo" --model ollama/qwen3.5:9b --code-mode code --local-model-lean --json',
-            "Force Code Mode with the lean local-model tool surface.",
+            'openclaw agent exec "Inspect this repo" --model ollama/qwen3.5:9b --code-mode code --agent-profile openclaw/small --json',
+            "Force Code Mode with the small-model Agent Profile.",
           ],
         ])}\n\n${theme.muted("Docs:")} ${formatDocsLink("/cli/agent#agent-exec", "docs.openclaw.ai/cli/agent#agent-exec")}`,
     )
@@ -164,6 +163,8 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/agent", "docs.openclaw.ai/cli/age
         | undefined;
       const execOpts = {
         ...opts,
+        agentProfile:
+          opts.agentProfile ?? (opts.localModelLean === true ? "openclaw/small" : undefined),
         messageFile: opts.messageFile ?? parentOpts?.messageFile,
         model: opts.model ?? parentOpts?.model,
         thinking: opts.thinking ?? parentOpts?.thinking,

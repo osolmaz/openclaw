@@ -80,7 +80,7 @@ Optional default skill allowlist for agents that do not set
 
 ## `agents.defaults.skipBootstrap`
 
-Disables automatic creation of workspace bootstrap files (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `BOOTSTRAP.md`).
+Disables automatic creation of workspace bootstrap files (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `BOOTSTRAP.md`), not injection of existing files. For the embedded runtime, use `contextInjection: "never"` to disable injection, unless overridden per agent.
 
 ```json5
 {
@@ -104,10 +104,11 @@ Skips creation of selected optional workspace files while still writing required
 
 ## `agents.defaults.contextInjection`
 
-Controls when workspace bootstrap files are injected into the system prompt. Default: `"always"`.
+Controls workspace bootstrap-file injection in the embedded runtime. Default: `"always"`. These modes do not control CLI-backed prompt preparation or prevent an agent from reading files with tools.
 
-- `"continuation-skip"`: safe continuation turns (after a completed assistant response) skip workspace bootstrap re-injection, reducing prompt size. Heartbeat runs and post-compaction retries still rebuild context.
-- `"never"`: disable workspace bootstrap and context-file injection on every turn. Use this only for agents that fully own their prompt lifecycle (custom context engines, native runtimes that build their own context, or specialized bootstrap-free workflows). Heartbeat and compaction-recovery turns also skip injection.
+- `"always"`: use normal workspace bootstrap injection, subject to the run's context mode and file filters.
+- `"continuation-skip"`: eligible continuation turns after a recorded full-bootstrap turn skip workspace bootstrap re-injection, reducing prompt size. Heartbeat runs, pending full-bootstrap setup, and post-compaction retries still use normal context resolution.
+- `"never"`: disable workspace bootstrap and context-file injection on every turn, including heartbeat and compaction-recovery turns. Use this for embedded agents with specialized bootstrap-free workflows.
 
 ```json5
 {
@@ -121,6 +122,8 @@ Per-agent override: `agents.entries.*.contextInjection`. Omitted values inherit
 ## `agents.defaults.bootstrapMaxChars`
 
 Max characters per workspace bootstrap file before truncation. Default: `20000`.
+Exception: `USER.md` has a fixed 4,000-character cap; this setting can only
+lower it for `USER.md`, never raise it. See [User model](/concepts/user-model).
 
 ```json5
 {
@@ -169,6 +172,33 @@ injection behavior from the shared defaults. Omitted fields inherit from
 }
 ```
 
+## Agent Profile workspace-context limits
+
+The selected Agent Profile can tighten workspace-file injection through the
+OpenClaw-owned `spec["openclaw.ai"].prompt.workspaceContext` section. These
+profile limits do not replace the operator settings above. For each file and
+for the total, OpenClaw uses the lower applicable limit. A profile cannot raise
+an operator or runtime ceiling.
+
+The policy supports canonical sections for `AGENTS.md`, `SOUL.md`,
+`IDENTITY.md`, and `USER.md`. Each section can set `include`, `maxChars`, and
+`overflow`. The `additional` block can declare exact workspace-relative paths,
+a fallback per-file limit, an additional-file pool limit, and a fallback
+overflow policy. Absolute paths, traversal, globs, and undeclared files are not
+accepted.
+
+OpenClaw first applies effective per-file limits. Content with
+`overflow: "error"` must fit and is reserved in full. It then applies the
+additional-file pool and divides any remaining aggregate budget proportionally
+across truncatable content by actual bounded character size. Deterministic
+rounding preserves stable output. Truncation is UTF-safe and includes a marker.
+
+The built-in `openclaw/small` profile uses an 8,000-character aggregate limit
+for managed workspace context. This is a rough 2,000-token proxy at four
+characters per token, not an exact tokenizer limit or a limit on the complete
+provider request. `BOOTSTRAP.md`, `BOOT.md`, memory, conversation history,
+skills, and tool schemas keep their separate controls and lifecycle rules.
+
 ## Bootstrap truncation notice
 
 When bootstrap context is truncated, OpenClaw always injects a concise
@@ -186,7 +216,8 @@ knob.
 
 | Budget                                                         | Covers                                                                                                                                                          |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents.defaults.bootstrapMaxChars` / `bootstrapTotalMaxChars` | Normal workspace bootstrap injection                                                                                                                            |
+| `agents.defaults.bootstrapMaxChars` / `bootstrapTotalMaxChars` | Operator ceilings for normal workspace bootstrap injection                                                                                                      |
+| `spec["openclaw.ai"].prompt.workspaceContext`                  | Agent Profile limits for canonical and explicitly declared workspace context; cannot raise operator ceilings                                                    |
 | `agents.defaults.startupContext.*`                             | One-shot reset/startup model-run prelude, including recent daily `memory/*.md` files. Bare chat `/new` and `/reset` are acknowledged without invoking the model |
 | `skills.limits.*`                                              | The compact skills list injected into the system prompt                                                                                                         |
 | `agents.defaults.contextLimits.*`                              | Bounded runtime excerpts and injected runtime-owned blocks                                                                                                      |
@@ -314,7 +345,7 @@ Higher values preserve more visual detail.
 Image-tool compression/detail preference for images loaded from file paths, URLs, and media references.
 Default: `auto`.
 
-OpenClaw adapts the resize ladder to the selected image model. For example, Claude Opus 4.8, OpenAI GPT-5.6 Sol, Qwen VL, and hosted Llama 4 vision models can use larger images than older/default high-detail vision paths, while multi-image turns are compressed more aggressively in `auto` mode to control token and latency cost.
+OpenClaw adapts the resize ladder to the selected image model. For example, Claude Opus 4.8, OpenAI GPT-6 Astra, Qwen VL, and hosted Llama 4 vision models can use larger images than older/default high-detail vision paths, while multi-image turns are compressed more aggressively in `auto` mode to control token and latency cost.
 
 Values:
 
