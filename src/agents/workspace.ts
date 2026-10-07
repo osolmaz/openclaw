@@ -141,6 +141,7 @@ function stripFrontMatter(content: string): string {
 const RETIRED_GENERATED_TEMPLATE_SHA256: Readonly<Record<string, readonly string[]>> = {
   [DEFAULT_AGENTS_FILENAME]: ["1e17784e422c0e47e44c5214d0b37092f7b378bb2d3746976032be3075203c88"],
   [DEFAULT_SOUL_FILENAME]: ["4f9042f259b076e429d0f01ce39340030f47ea5b7f5befe306296c36baf1f60f"],
+  [DEFAULT_IDENTITY_FILENAME]: ["59b223766c8dd978162044e333a684c72e22af753d1ba3dc3bff4b2d915c54e2"],
 };
 
 async function isGeneratedTemplateContent(fileName: string, content: string): Promise<boolean> {
